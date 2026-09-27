@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f6f3ee" />
+  <title>come-come 食事カメラ</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>come-come</h1>
+    <p class="sub">食べている様子を映すだけで、カロリーと栄養を自動記録</p>
+  </header>
+
+  <main>
+    <section class="camera card">
+      <div class="video-wrap">
+        <video id="video" playsinline muted></video>
+        <div id="placeholder" class="placeholder">カメラを開始してください</div>
+        <div id="badge" class="badge" hidden></div>
+      </div>
+      <div class="controls">
+        <button id="startBtn" class="primary">カメラ開始</button>
+        <button id="flipBtn" disabled>カメラ切替</button>
+        <button id="snapBtn" disabled>今すぐ解析</button>
+        <label class="interval">
+          間隔
+          <select id="interval">
+            <option value="5">5秒</option>
+            <option value="10" selected>10秒</option>
+            <option value="20">20秒</option>
+            <option value="30">30秒</option>
+          </select>
+        </label>
+      </div>
+      <p id="status" class="status" aria-live="polite">待機中</p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>いま追跡中の食事</h2>
+        <button id="newMealBtn" class="ghost">食事を区切る</button>
+      </div>
+      <ul id="dishes" class="dishes"></ul>
+      <p id="noDishes" class="muted">まだ料理は検出されていません</p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>今日の摂取量</h2>
+        <button id="profileBtn" class="ghost">プロフィール</button>
+      </div>
+      <div class="energy">
+        <div class="energy-num"><span id="kcal">0</span><small> / <span id="kcalTarget">0</span> kcal</small></div>
+        <div class="meter"><div id="kcalBar" class="meter-fill"></div></div>
+      </div>
+      <ul id="nutrients" class="nutrients"></ul>
+    </section>
+
+    <section class="card">
+      <h2>足りていない栄養素</h2>
+      <ul id="advice" class="advice"></ul>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>今日の記録</h2>
+        <button id="resetBtn" class="ghost danger">今日の記録を消去</button>
+      </div>
+      <ul id="log" class="log"></ul>
+    </section>
+
+    <p class="disclaimer">
+      数値は画像からのAI推定値です。目標量は日本人の食事摂取基準を簡略化した成人の目安で、医療・栄養指導の代わりにはなりません。
+    </p>
+  </main>
+
+  <dialog id="profileDialog">
+    <form method="dialog">
+      <h2>プロフィール</h2>
+      <label>性別
+        <select name="sex"><option value="female">女性</option><option value="male">男性</option></select>
+      </label>
+      <label>年齢
+        <select name="age"></select>
+      </label>
+      <label>身体活動レベル
+        <select name="activity"></select>
+      </label>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost">キャンセル</button>
+        <button value="save" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <canvas id="canvas" hidden></canvas>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

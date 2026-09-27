@@ -1,0 +1,25 @@
+{
+  "name": "come-come",
+  "version": "0.1.0",
+  "description": "食事中の映像からカロリーと栄養素を自動で推定するアプリ",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/to49ra16s7azr9u2-cmd/come-come.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/to49ra16s7azr9u2-cmd/come-come/issues"
+  },
+  "homepage": "https://github.com/to49ra16s7azr9u2-cmd/come-come#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "zod": "^4.6.5"
+  },
+  "type": "module"
+}
