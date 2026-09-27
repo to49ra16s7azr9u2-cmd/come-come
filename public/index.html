@@ -4,6 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#2f4b8f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="come-come" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <title>come-come</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -148,6 +154,18 @@
       <div class="dialog-actions">
         <button value="cancel" class="ghost" data-i18n="btn.close"></button>
         <button value="trial" class="primary" data-i18n="btn.startTrial"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="accessDialog">
+    <form id="accessForm" method="dialog">
+      <h2 data-i18n="access.title"></h2>
+      <p id="accessBody" class="muted small" data-i18n="access.body"></p>
+      <input id="accessInput" type="password" autocomplete="current-password" required data-i18n-placeholder="access.placeholder" />
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost" formnovalidate data-i18n="btn.cancel"></button>
+        <button value="save" class="primary" data-i18n="btn.save"></button>
       </div>
     </form>
   </dialog>

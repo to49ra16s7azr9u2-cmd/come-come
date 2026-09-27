@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#2f4b8f"/>
+  <!-- 皿(真上から) -->
+  <circle cx="256" cy="272" r="150" fill="#f3f4f7"/>
+  <circle cx="256" cy="272" r="104" fill="none" stroke="#c9d3ec" stroke-width="14"/>
+  <!-- カメラの枠(検出枠) -->
+  <path d="M96 120v-40h40M416 120v-40h-40M96 424v40h40M416 424v40h-40" fill="none" stroke="#8ea8ff" stroke-width="22" stroke-linecap="round"/>
+  <!-- ひと口分 -->
+  <circle cx="256" cy="272" r="46" fill="#2f4b8f"/>
+</svg>

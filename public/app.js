@@ -65,6 +65,30 @@ function saveDay() {
 }
 const isPremium = () => settings.plan === "premium";
 
+// ---- アクセスコード(公開サーバーで APP_ACCESS_CODE が設定されているとき) ----
+let accessCode = store.get("come-come:accessCode", "");
+let accessRequired = false;
+let accessWaiter = null;
+
+/** アクセスコードを入力してもらう。入力されたら true */
+function askAccessCode(wrong = false) {
+  $("accessBody").textContent = wrong ? t("access.wrong") : t("access.body");
+  $("accessInput").value = "";
+  if (!$("accessDialog").open) $("accessDialog").showModal();
+  return new Promise((resolve) => (accessWaiter = resolve));
+}
+
+$("accessDialog").addEventListener("close", () => {
+  const ok = $("accessDialog").returnValue === "save" && $("accessInput").value.trim() !== "";
+  if (ok) {
+    accessCode = $("accessInput").value.trim();
+    store.set("come-come:accessCode", accessCode);
+    pausedUntil = 0;
+  }
+  accessWaiter?.(ok);
+  accessWaiter = null;
+});
+
 // ---- カメラとリアルタイム解析 ----
 let stream = null;
 let facingMode = "user";
@@ -86,6 +110,7 @@ let eatingNow = false;
 
 async function startCamera() {
   stopCamera();
+  if (accessRequired && !accessCode && !(await askAccessCode())) return false;
   if (!navigator.mediaDevices?.getUserMedia) {
     setStatus(t("status.cameraUnsupported"), "error");
     return false;
@@ -229,20 +254,34 @@ async function analyzeFrame() {
   pendingBites = 0;
   setStatus(t("status.analyzing"), "busy");
   try {
-    const res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        image: captureFrame(),
-        knownDishes: activeDishes(),
-        lang: getLang(),
-        plateCm: profile.plate_cm,
-        bites: bitesNow,
-      }),
-    });
-    const data = await res.json();
-    if (res.status === 429) pausedUntil = Date.now() + 20000;
-    if (!res.ok) throw new Error(data.error || res.statusText);
+    let res;
+    try {
+      res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-access-code": accessCode },
+        body: JSON.stringify({
+          image: captureFrame(),
+          knownDishes: activeDishes(),
+          lang: getLang(),
+          plateCm: profile.plate_cm,
+          bites: bitesNow,
+        }),
+      });
+    } catch {
+      throw new Error(t("err.network"));
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (data.code === "access_code") {
+        // コードが違う(または変わった)ときは、入力されるまで解析を止める
+        pausedUntil = Infinity;
+        askAccessCode(Boolean(accessCode));
+      }
+      if (data.code === "rate_limited") pausedUntil = Date.now() + 20_000;
+      if (data.code === "daily_limit") pausedUntil = Date.now() + 10 * 60_000;
+      if (data.code === "upstream") pausedUntil = Date.now() + 5_000;
+      throw new Error(data.code ? t("err." + data.code) : data.error || res.statusText);
+    }
     const analysis = normalizeAnalysis(data);
     applyAnalysis(analysis);
     eatingNow = analysis.eating;
@@ -819,3 +858,9 @@ if (PREVIEW) {
 }
 render();
 if (!profile.onboarded) openProfile(true);
+if (!PREVIEW) {
+  fetch("/api/config")
+    .then((r) => r.json())
+    .then((c) => (accessRequired = Boolean(c.accessCodeRequired)))
+    .catch(() => {});
+}

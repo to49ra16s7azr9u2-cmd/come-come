@@ -27,7 +27,26 @@
 
 ブラウザ(Web アプリ)は、アプリが裏に回ったり画面が消えたりするとカメラを止めます。これは iOS / Android の仕様で回避できないため、Web 版の「ながら記録モード」は「画面をつけたまま暗くして動かし続ける」方式です。画面を消した状態や他のアプリ使用中にもカメラ解析を続けるには、ネイティブアプリ化(Capacitor などでの iOS / Android アプリ化)が必要です。
 
-## 使い方
+## スマホで使う(Render に公開)
+
+スマホのブラウザは HTTPS でないとカメラを使わせないため、HTTPS のサーバーに公開します。[Render](https://render.com) の無料プランでボタン1つで公開できます。
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/to49ra16s7azr9u2-cmd/come-come/tree/claude/practical-johnson-0bs9yq)
+
+1. 上のボタンを押し、Render に GitHub でログインする(リポジトリが非公開なら、案内に従って Render の GitHub App にこのリポジトリへのアクセスを許可する)。
+2. 入力を求められる2つの値を入れて「Apply」を押す。
+   - `ANTHROPIC_API_KEY`: Claude の API キー(https://console.anthropic.com/ で発行)
+   - `APP_ACCESS_CODE`: アプリを開くときの合言葉(自分で決める。これを知っている人だけが解析を使える)
+3. 数分で `https://come-come-xxxx.onrender.com` のような URL ができる。スマホでその URL を開き、プロフィールを入力して「Iniciar cámara」を押す。最初にアクセスコードを聞かれる。
+4. ホーム画面に追加すると、アプリのように全画面で開ける(iPhone は Safari の共有ボタン →「ホーム画面に追加」、Android は Chrome のメニュー →「ホーム画面に追加」)。
+
+公開後の注意:
+
+- **費用**: 解析1回ごとに Claude API の料金がかかります。食事中は数秒〜十数秒ごとに解析するため、1食で数十回になります。`DAILY_ANALYSIS_LIMIT`(既定 1500 回/日)で1日の上限を、`RATE_LIMIT_PER_MINUTE`(既定 20 回/分)で端末ごとの上限を設定できます。Anthropic Console で利用額の上限も設定してください。
+- **無料プランのスリープ**: Render の無料プランは 15 分使わないと停止し、次に開くとき起動に 1 分ほどかかります。常に即応させたい場合は有料プランにしてください。
+- **更新**: このブランチに push すると自動で再デプロイされます。
+
+## ローカルで動かす
 
 ```bash
 npm install
@@ -47,6 +66,9 @@ npm start
 | `COMECOME_MODEL` | `claude-opus-5` | 解析に使うモデル |
 | `COMECOME_EFFORT` | `low` | 残量を更新するときの推論の深さ(`low`〜`max`) |
 | `COMECOME_INITIAL_EFFORT` | `high` | 新しい食事の最初の1枚(料理と量の特定)の推論の深さ |
+| `APP_ACCESS_CODE` | (なし) | 設定すると、このコードを入力した端末だけが解析を使える。公開時は必ず設定する |
+| `RATE_LIMIT_PER_MINUTE` | `20` | 端末(IP)ごとの1分あたりの解析回数の上限 |
+| `DAILY_ANALYSIS_LIMIT` | `1500` | サーバー全体の1日あたりの解析回数の上限 |
 
 ## プレビュー
 
