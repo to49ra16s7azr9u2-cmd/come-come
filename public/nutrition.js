@@ -69,10 +69,29 @@ export function dailyTargets(profile = DEFAULT_PROFILE) {
   return targets;
 }
 
-/** 料理1品について、これまでに食べた分の栄養素量 */
+// 追跡のパラメータ(車両追跡システムの「検出→確定→平滑化」と同じ考え方)
+export const TRACKING = {
+  confirmHits: 2, // この回数映ったら確定(誤検出を記録しない)
+  confirmConfidence: 0.75, // 1回目でもこの信頼度以上なら即確定
+  smoothWindow: 3, // 残量は直近この回数の中央値で平滑化
+};
+
+/** 食材リストから1人前の栄養素量を計算する。表にある食材は表の値を優先する。 */
+export function nutrientsFromIngredients(ingredients = [], db = {}) {
+  const total = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]));
+  for (const ing of ingredients) {
+    const per100g = db[ing.db_key]?.per100g ?? ing.per100g ?? {};
+    const factor = Math.max(0, Number(ing.grams) || 0) / 100;
+    for (const k of NUTRIENT_KEYS) total[k] += Math.max(0, Number(per100g[k]) || 0) * factor;
+  }
+  return total;
+}
+
+/** 料理1品について、これまでに食べた分の栄養素量。未確定の料理は数えない。 */
 export function consumedOf(dish) {
-  const eatenRatio = clamp((100 - dish.remaining_percent) / 100, 0, 1);
-  const out = {};
+  const out = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]));
+  if (dish.confirmed === false) return out;
+  const eatenRatio = clamp((100 - dish.remaining_percent) / 100, 0, 1) * (dish.scale ?? 1);
   for (const k of NUTRIENT_KEYS) out[k] = (dish.portion_nutrients?.[k] ?? 0) * eatenRatio;
   return out;
 }
@@ -106,32 +125,53 @@ export function evaluate(total, targets) {
 
 /**
  * 映像解析の結果を、追跡中の料理リストにマージする。
- * - 既知の料理は最初に推定した1人前の栄養素を維持し、残量は単調減少(min)として扱う。
- *   これにより、箸で持ち上げた・角度が変わった等で残量推定が揺れても二重計上しない。
- * - 新しい料理はIDを振って追加する。
+ * - 既知の料理は最初に推定した1人前の栄養素を維持する。
+ * - 残量は直近の観測の中央値で平滑化し、さらに減る方向にしか更新しない。
+ *   1枚だけ推定が外れても(箸で隠れた・角度が変わった等)食べた量が跳ねず、二重計上もしない。
+ * - 新しい料理は「未確定」で追加し、複数回映るか信頼度が高ければ確定する(誤検出対策)。
  */
-export function mergeAnalysis(dishes, analysis, { now = Date.now(), makeId = defaultId } = {}) {
+export function mergeAnalysis(dishes, analysis, { now = Date.now(), makeId = defaultId, db = {} } = {}) {
   const byId = new Map(dishes.map((d) => [d.id, { ...d }]));
   for (const a of analysis.dishes ?? []) {
     const existing = a.id && byId.get(a.id);
-    const remaining = clamp(Number(a.remaining_percent) || 0, 0, 100);
+    const observed = clamp(Number(a.remaining_percent) || 0, 0, 100);
     if (existing) {
-      if (a.visible) existing.remaining_percent = Math.min(existing.remaining_percent, remaining);
+      if (!a.visible) continue;
+      const obs = [...(existing.observations ?? []), observed].slice(-TRACKING.smoothWindow);
+      existing.observations = obs;
+      existing.hits = (existing.hits ?? 1) + 1;
+      existing.confirmed = existing.confirmed || existing.hits >= TRACKING.confirmHits;
+      // 観測が揃うまでは最新値、揃ったら中央値で外れ値を除く
+      const smoothed = obs.length >= TRACKING.smoothWindow ? median(obs) : observed;
+      existing.remaining_percent = Math.min(existing.remaining_percent, smoothed);
       existing.updated_at = now;
     } else if (a.visible) {
       const id = makeId();
+      const ingredients = a.ingredients ?? [];
       byId.set(id, {
         id,
         name: a.name,
         serving_description: a.serving_description,
-        portion_nutrients: sanitizeNutrients(a.portion_nutrients),
-        remaining_percent: remaining,
+        ingredients: ingredients.map((i) => ({ name: i.name, db_key: db[i.db_key] ? i.db_key : "", grams: i.grams })),
+        portion_nutrients: ingredients.length ? nutrientsFromIngredients(ingredients, db) : sanitizeNutrients(a.portion_nutrients),
+        remaining_percent: observed,
+        observations: [observed],
+        hits: 1,
+        confidence: a.confidence ?? 1,
+        confirmed: (a.confidence ?? 1) >= TRACKING.confirmConfidence,
+        scale: 1,
         created_at: now,
         updated_at: now,
       });
     }
   }
   return [...byId.values()];
+}
+
+function median(values) {
+  const s = [...values].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
 function sanitizeNutrients(n = {}) {

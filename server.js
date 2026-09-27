@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { SYSTEM_PROMPT, buildUserText, normalizeAnalysis } from "./public/analysis.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 const MODEL = process.env.COMECOME_MODEL || "claude-opus-5";
 const EFFORT = process.env.COMECOME_EFFORT || "low";
+const INITIAL_EFFORT = process.env.COMECOME_INITIAL_EFFORT || "high";
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
@@ -31,54 +33,46 @@ const Nutrients = z.object({
 });
 
 const Analysis = z.object({
-  eating: z.boolean().describe("人が食事中(食べ物を口に運んでいる/噛んでいる)ように見えるか"),
-  scene_note: z.string().describe("画面の状況を日本語で一言"),
+  eating: z.boolean(),
+  scene_note: z.string(),
   dishes: z.array(
     z.object({
-      id: z.string().describe("既知の料理ならそのID。新しい料理なら空文字"),
-      name: z.string().describe("料理名(日本語)"),
-      serving_description: z.string().describe("1人前として想定した量。例: 茶碗1杯 約150g"),
-      portion_nutrients: Nutrients.describe("最初に映った時点の1人前(100%)全体の栄養素量"),
-      remaining_percent: z.number().describe("1人前に対する現在の残量 0〜100"),
-      visible: z.boolean().describe("この画像に映っているか"),
+      id: z.string(),
+      name: z.string(),
+      serving_description: z.string(),
+      confidence: z.number(),
+      remaining_percent: z.number(),
+      visible: z.boolean(),
+      ingredients: z.array(
+        z.object({
+          name: z.string(),
+          db_key: z.string(),
+          grams: z.number(),
+          per100g: Nutrients,
+        }),
+      ),
     }),
   ),
 });
 
-const SYSTEM_PROMPT = `あなたは管理栄養士として、食事中の人を映したカメラ画像から摂取量を推定します。
-
-画像には食卓・料理・食べている人が映っています。以下を行ってください。
-- 映っている料理・飲み物をすべて特定し、1人前全体(最初に配膳された量)の栄養素量を日本食品標準成分表の感覚で推定する。
-- 各料理の現在の残量を、配膳時を100%とした割合で推定する。食べ進めて減った分が「食べた量」になる。
-- 「既知の料理」リストに同じ料理がある場合は、そのIDを使い、残量だけを更新する(栄養素量は既知の値をそのまま返してよい)。
-- 既知の料理が画像に映っていなければ visible=false とする(残量は既知の値のまま)。
-- 新しい料理は id を空文字にする。
-- 食べ物が映っていなければ dishes は既知の料理を visible=false で返すだけでよい。
-- 箸やスプーンで持ち上げているだけの分は、口に入るまで残量から引かない。
-数値は現実的な範囲で、不確かな場合も最も妥当な推定値を返してください。`;
-
 async function analyzeFrame({ image, mediaType, knownDishes }) {
-  const known = (knownDishes ?? []).map((d) => ({
-    id: d.id,
-    name: d.name,
-    serving_description: d.serving_description,
-    remaining_percent: d.remaining_percent,
-  }));
-
+  // 新しい食事の最初の1枚は料理の特定と量の見積もりが重要なので深く考えさせ、
+  // 以降の残量の更新は軽く・速くする
+  const effort = knownDishes.length ? EFFORT : INITIAL_EFFORT;
   const response = await client.beta.messages.parse({
     model: MODEL,
     max_tokens: 16000,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     thinking: { type: "adaptive" },
-    output_config: { effort: EFFORT, format: betaZodOutputFormat(Analysis) },
+    output_config: { effort, format: betaZodOutputFormat(Analysis) },
     system: SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
-          { type: "text", text: `既知の料理:\n${known.length ? JSON.stringify(known, null, 2) : "(なし)"}` },
+          { type: "text", text: buildUserText(knownDishes) },
         ],
       },
     ],
@@ -90,7 +84,7 @@ async function analyzeFrame({ image, mediaType, knownDishes }) {
   if (!response.parsed_output) {
     throw new HttpError(502, "解析結果を読み取れませんでした");
   }
-  return response.parsed_output;
+  return normalizeAnalysis(response.parsed_output);
 }
 
 class HttpError extends Error {

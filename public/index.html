@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f6f3ee" />
-  <title>come-come 食事カメラ</title>
+  <meta name="theme-color" content="#2f4b8f" />
+  <title>come-come</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&family=Zen+Maru+Gothic:wght@700&display=swap" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -14,8 +17,12 @@
   </header>
 
   <main>
+    <div id="sampleBanner" class="sample-banner" hidden>
+      <span>いま表示しているのはサンプルです。写真を撮ると、あなたの記録に切り替わります。</span>
+      <button id="clearSampleBtn" class="ghost small">サンプルを消す</button>
+    </div>
     <section class="camera card">
-      <div class="video-wrap">
+      <div class="video-wrap" id="videoWrap">
         <video id="video" playsinline muted></video>
         <div id="placeholder" class="placeholder">カメラを開始してください</div>
         <div id="badge" class="badge" hidden></div>
@@ -24,7 +31,10 @@
         <button id="startBtn" class="primary">カメラ開始</button>
         <button id="flipBtn" disabled>カメラ切替</button>
         <button id="snapBtn" disabled>今すぐ解析</button>
-        <label class="interval">
+        <label class="button-like" id="photoLabel">写真で解析
+          <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
+        </label>
+        <label class="interval" id="intervalWrap">
           間隔
           <select id="interval">
             <option value="5">5秒</option>
@@ -35,6 +45,7 @@
         </label>
       </div>
       <p id="status" class="status" aria-live="polite">待機中</p>
+      <p id="modeNote" class="muted small" hidden>プレビュー版: あなたのClaudeで解析します(自動の定期解析はオフ)。食べ始めと途中で撮ると、食べた量が計算されます。</p>
     </section>
 
     <section class="card">
