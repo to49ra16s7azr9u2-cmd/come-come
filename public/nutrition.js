@@ -1,72 +1,127 @@
-// 栄養素の定義・1日の目標量・摂取量の集計ロジック。
+// 栄養素の定義・1日の目標量・摂取量の集計・料理の追跡ロジック。
 // ブラウザとNode(テスト)の両方から読み込めるよう、DOMに依存しない純粋な関数だけを置く。
 
 export const NUTRIENTS = [
-  { key: "energy_kcal", label: "エネルギー", unit: "kcal", kind: "target" },
-  { key: "protein_g", label: "たんぱく質", unit: "g", kind: "min" },
-  { key: "fat_g", label: "脂質", unit: "g", kind: "range" },
-  { key: "carbs_g", label: "炭水化物", unit: "g", kind: "range" },
-  { key: "fiber_g", label: "食物繊維", unit: "g", kind: "min" },
-  { key: "salt_g", label: "食塩相当量", unit: "g", kind: "max" },
-  { key: "calcium_mg", label: "カルシウム", unit: "mg", kind: "min" },
-  { key: "iron_mg", label: "鉄", unit: "mg", kind: "min" },
-  { key: "vitamin_a_ug", label: "ビタミンA", unit: "µgRAE", kind: "min" },
-  { key: "vitamin_b1_mg", label: "ビタミンB1", unit: "mg", kind: "min" },
-  { key: "vitamin_b2_mg", label: "ビタミンB2", unit: "mg", kind: "min" },
-  { key: "vitamin_c_mg", label: "ビタミンC", unit: "mg", kind: "min" },
-  { key: "vitamin_d_ug", label: "ビタミンD", unit: "µg", kind: "min" },
+  { key: "energy_kcal", unit: "kcal", kind: "target" },
+  { key: "protein_g", unit: "g", kind: "min" },
+  { key: "fat_g", unit: "g", kind: "range" },
+  { key: "carbs_g", unit: "g", kind: "range" },
+  { key: "fiber_g", unit: "g", kind: "min" },
+  { key: "salt_g", unit: "g", kind: "max" },
+  { key: "calcium_mg", unit: "mg", kind: "min" },
+  { key: "iron_mg", unit: "mg", kind: "min" },
+  { key: "vitamin_a_ug", unit: "µgRAE", kind: "min" },
+  { key: "vitamin_b1_mg", unit: "mg", kind: "min" },
+  { key: "vitamin_b2_mg", unit: "mg", kind: "min" },
+  { key: "vitamin_c_mg", unit: "mg", kind: "min" },
+  { key: "vitamin_d_ug", unit: "µg", kind: "min" },
 ];
 
 export const NUTRIENT_KEYS = NUTRIENTS.map((n) => n.key);
 
-// 不足しているときに勧める食品の例
-export const FOOD_HINTS = {
-  energy_kcal: "ごはん・パン・麺類などの主食",
-  protein_g: "肉・魚・卵・大豆製品",
-  fat_g: "ナッツ・青魚・オリーブオイル",
-  carbs_g: "ごはん・パン・いも類・果物",
-  fiber_g: "野菜・きのこ・海藻・玄米",
-  calcium_mg: "牛乳・ヨーグルト・小魚・小松菜",
-  iron_mg: "レバー・赤身肉・あさり・ほうれん草",
-  vitamin_a_ug: "にんじん・かぼちゃ・レバー",
-  vitamin_b1_mg: "豚肉・玄米・大豆",
-  vitamin_b2_mg: "卵・納豆・乳製品",
-  vitamin_c_mg: "果物・ブロッコリー・ピーマン",
-  vitamin_d_ug: "鮭・さんま・きのこ類",
+export const MEALS = ["breakfast", "lunch", "dinner", "snack"];
+
+/** 時刻から食事区分を決める(メキシコの食習慣: 昼食 comida は14〜16時ごろ) */
+export function mealForTime(date = new Date()) {
+  const h = date.getHours() + date.getMinutes() / 60;
+  if (h >= 5 && h < 11.5) return "breakfast";
+  if (h >= 12.5 && h < 17.5) return "lunch";
+  if (h >= 19 || h < 2) return "dinner";
+  return "snack";
+}
+
+export const ACTIVITY_FACTORS = [1.2, 1.375, 1.55, 1.725];
+export const GOALS = ["lose", "maintain", "gain"];
+export const COUNTRIES = ["MX", "US", "JP"];
+
+export const DEFAULT_PROFILE = {
+  sex: "female",
+  age: 30,
+  height_cm: 160,
+  weight_kg: 65,
+  target_weight_kg: 60,
+  activity: 1,
+  goal: "maintain",
+  country: "MX",
+  plate_cm: 0,
 };
 
-// 推定エネルギー必要量(kcal/日)。日本人の食事摂取基準(2020年版)を簡略化。
-// [身体活動レベル 低い, ふつう, 高い]
-const ENERGY_TABLE = {
-  male: { "18-29": [2300, 2650, 3050], "30-49": [2300, 2700, 3050], "50-64": [2200, 2600, 2950], "65-74": [2050, 2400, 2750], "75+": [1800, 2100, 2100] },
-  female: { "18-29": [1700, 2000, 2300], "30-49": [1750, 2050, 2350], "50-64": [1650, 1950, 2250], "65-74": [1550, 1850, 2100], "75+": [1400, 1650, 1650] },
-};
+/** 古い形式(年齢が "30-49" など)のプロフィールも読めるようにする */
+export function normalizeProfile(p = {}) {
+  const num = (v, d) => (Number.isFinite(Number.parseFloat(v)) ? Number.parseFloat(v) : d);
+  const out = { ...DEFAULT_PROFILE, ...p };
+  out.sex = out.sex === "male" ? "male" : "female";
+  out.age = Math.round(num(out.age, DEFAULT_PROFILE.age));
+  out.height_cm = num(out.height_cm, DEFAULT_PROFILE.height_cm);
+  out.weight_kg = num(out.weight_kg, DEFAULT_PROFILE.weight_kg);
+  out.target_weight_kg = num(out.target_weight_kg, out.weight_kg);
+  out.activity = Math.min(3, Math.max(0, Math.round(num(out.activity, 1))));
+  out.goal = GOALS.includes(out.goal) ? out.goal : "maintain";
+  out.country = COUNTRIES.includes(out.country) ? out.country : "MX";
+  out.plate_cm = Math.max(0, num(out.plate_cm, 0));
+  return out;
+}
 
-// 成人の推奨量・目安量・目標量(簡略化した代表値)
-const MICRO_TABLE = {
-  male: { protein_g: 65, fiber_g: 21, salt_g: 7.5, calcium_mg: 750, iron_mg: 7.5, vitamin_a_ug: 900, vitamin_b1_mg: 1.4, vitamin_b2_mg: 1.6, vitamin_c_mg: 100, vitamin_d_ug: 8.5 },
-  female: { protein_g: 50, fiber_g: 18, salt_g: 6.5, calcium_mg: 650, iron_mg: 10.5, vitamin_a_ug: 700, vitamin_b1_mg: 1.1, vitamin_b2_mg: 1.2, vitamin_c_mg: 100, vitamin_d_ug: 8.5 },
-};
+/** 基礎代謝(Mifflin-St Jeor式) */
+export function bmr({ sex, age, height_cm, weight_kg }) {
+  return 10 * weight_kg + 6.25 * height_cm - 5 * age + (sex === "male" ? 5 : -161);
+}
 
-export const AGE_GROUPS = Object.keys(ENERGY_TABLE.male);
-export const ACTIVITY_LEVELS = ["低い", "ふつう", "高い"];
+export function bmi({ height_cm, weight_kg }) {
+  const m = height_cm / 100;
+  return m > 0 ? weight_kg / (m * m) : 0;
+}
 
-export const DEFAULT_PROFILE = { sex: "female", age: "30-49", activity: 1 };
+// 米国・カナダの食事摂取基準(DRI)。メキシコの推奨摂取量(IDR)もおおむねこれに準じる。
+function driMicros(sex, age) {
+  const male = sex === "male";
+  return {
+    fiber_g: male ? (age <= 50 ? 38 : 30) : age <= 50 ? 25 : 21,
+    calcium_mg: male ? (age <= 70 ? 1000 : 1200) : age <= 50 ? 1000 : 1200,
+    iron_mg: male ? 8 : age <= 50 ? 18 : 8,
+    vitamin_a_ug: male ? 900 : 700,
+    vitamin_b1_mg: male ? 1.2 : 1.1,
+    vitamin_b2_mg: male ? 1.3 : 1.1,
+    vitamin_c_mg: male ? 90 : 75,
+    vitamin_d_ug: age <= 70 ? 15 : 20,
+    salt_g: 5, // WHO: ナトリウム2,000mg/日未満 = 食塩5g
+  };
+}
+
+// 日本人の食事摂取基準(2020年版)を簡略化した成人の値
+function jpMicros(sex) {
+  return sex === "male"
+    ? { protein_g: 65, fiber_g: 21, salt_g: 7.5, calcium_mg: 750, iron_mg: 7.5, vitamin_a_ug: 900, vitamin_b1_mg: 1.4, vitamin_b2_mg: 1.6, vitamin_c_mg: 100, vitamin_d_ug: 8.5 }
+    : { protein_g: 50, fiber_g: 18, salt_g: 6.5, calcium_mg: 650, iron_mg: 10.5, vitamin_a_ug: 700, vitamin_b1_mg: 1.1, vitamin_b2_mg: 1.2, vitamin_c_mg: 100, vitamin_d_ug: 8.5 };
+}
 
 /**
- * 1日の目標量を返す。min/max を持つ範囲型(脂質・炭水化物)はエネルギー比率から算出する。
+ * 1日の目標量。エネルギーは身長・体重・年齢・性別・活動量と目的(減量/維持/増量)から計算する。
  * 返り値: { [key]: { value, min?, max? } }
  */
-export function dailyTargets(profile = DEFAULT_PROFILE) {
-  const sex = profile.sex === "male" ? "male" : "female";
-  const energy = ENERGY_TABLE[sex][profile.age]?.[profile.activity] ?? ENERGY_TABLE[sex]["30-49"][1];
-  const micro = MICRO_TABLE[sex];
+export function dailyTargets(profileIn = DEFAULT_PROFILE) {
+  const p = normalizeProfile(profileIn);
+  const tdee = bmr(p) * ACTIVITY_FACTORS[p.activity];
+  const floor = p.sex === "male" ? 1500 : 1200;
+  let energy = tdee;
+  if (p.goal === "lose") energy = Math.max(Math.min(floor, tdee), tdee - 500);
+  if (p.goal === "gain") energy = tdee + 300;
+  energy = Math.round(energy / 10) * 10;
+
+  const jp = p.country === "JP";
+  const micro = jp ? jpMicros(p.sex) : driMicros(p.sex, p.age);
+  const fatPct = jp ? [0.2, 0.3] : [0.2, 0.35];
+  const carbPct = jp ? [0.5, 0.65] : [0.45, 0.65];
   const targets = { energy_kcal: { value: energy } };
-  // 脂質 20〜30%エネルギー(9kcal/g)、炭水化物 50〜65%エネルギー(4kcal/g)
-  targets.fat_g = { value: round1((energy * 0.25) / 9), min: round1((energy * 0.2) / 9), max: round1((energy * 0.3) / 9) };
-  targets.carbs_g = { value: round1((energy * 0.575) / 4), min: round1((energy * 0.5) / 4), max: round1((energy * 0.65) / 4) };
-  for (const [k, v] of Object.entries(micro)) targets[k] = { value: v };
+  targets.protein_g = { value: round1(jp ? micro.protein_g : 0.8 * p.weight_kg) };
+  targets.fat_g = range((energy * fatPct[0]) / 9, (energy * fatPct[1]) / 9);
+  targets.carbs_g = range((energy * carbPct[0]) / 4, (energy * carbPct[1]) / 4);
+  for (const [k, v] of Object.entries(micro)) if (k !== "protein_g") targets[k] = { value: v };
   return targets;
+}
+
+function range(min, max) {
+  return { value: round1((min + max) / 2), min: round1(min), max: round1(max) };
 }
 
 // 追跡のパラメータ(車両追跡システムの「検出→確定→平滑化」と同じ考え方)
@@ -78,7 +133,7 @@ export const TRACKING = {
 
 /** 食材リストから1人前の栄養素量を計算する。表にある食材は表の値を優先する。 */
 export function nutrientsFromIngredients(ingredients = [], db = {}) {
-  const total = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]));
+  const total = zeros();
   for (const ing of ingredients) {
     const per100g = db[ing.db_key]?.per100g ?? ing.per100g ?? {};
     const factor = Math.max(0, Number(ing.grams) || 0) / 100;
@@ -89,7 +144,7 @@ export function nutrientsFromIngredients(ingredients = [], db = {}) {
 
 /** 料理1品について、これまでに食べた分の栄養素量。未確定の料理は数えない。 */
 export function consumedOf(dish) {
-  const out = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]));
+  const out = zeros();
   if (dish.confirmed === false) return out;
   const eatenRatio = clamp((100 - dish.remaining_percent) / 100, 0, 1) * (dish.scale ?? 1);
   for (const k of NUTRIENT_KEYS) out[k] = (dish.portion_nutrients?.[k] ?? 0) * eatenRatio;
@@ -97,7 +152,7 @@ export function consumedOf(dish) {
 }
 
 export function sumConsumed(dishes) {
-  const total = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]));
+  const total = zeros();
   for (const d of dishes) {
     const c = consumedOf(d);
     for (const k of NUTRIENT_KEYS) total[k] += c[k];
@@ -124,13 +179,34 @@ export function evaluate(total, targets) {
 }
 
 /**
+ * 1日の栄養バランスを100点満点で採点する。
+ * 各栄養素を0〜1で評価(不足は達成率、過剰は超過分を減点)し、エネルギーは2倍の重みで平均する。
+ */
+export function balanceScore(results) {
+  let sum = 0;
+  let weight = 0;
+  for (const r of results) {
+    const t = r.target;
+    let s;
+    if (r.kind === "max") s = r.amount <= t.value ? 1 : Math.max(0, 2 - r.amount / t.value);
+    else if (r.kind === "range") s = r.amount < t.min ? r.amount / t.min : r.amount > t.max ? Math.max(0, 2 - r.amount / t.max) : 1;
+    else if (r.kind === "target") s = Math.max(0, 1 - Math.abs(r.ratio - 1));
+    else s = Math.min(1, r.ratio);
+    const w = r.key === "energy_kcal" ? 2 : 1;
+    sum += clamp(s, 0, 1) * w;
+    weight += w;
+  }
+  return Math.round((100 * sum) / weight);
+}
+
+/**
  * 映像解析の結果を、追跡中の料理リストにマージする。
  * - 既知の料理は最初に推定した1人前の栄養素を維持する。
  * - 残量は直近の観測の中央値で平滑化し、さらに減る方向にしか更新しない。
  *   1枚だけ推定が外れても(箸で隠れた・角度が変わった等)食べた量が跳ねず、二重計上もしない。
  * - 新しい料理は「未確定」で追加し、複数回映るか信頼度が高ければ確定する(誤検出対策)。
  */
-export function mergeAnalysis(dishes, analysis, { now = Date.now(), makeId = defaultId, db = {} } = {}) {
+export function mergeAnalysis(dishes, analysis, { now = Date.now(), makeId = defaultId, db = {}, meal } = {}) {
   const byId = new Map(dishes.map((d) => [d.id, { ...d }]));
   for (const a of analysis.dishes ?? []) {
     const existing = a.id && byId.get(a.id);
@@ -152,7 +228,15 @@ export function mergeAnalysis(dishes, analysis, { now = Date.now(), makeId = def
         id,
         name: a.name,
         serving_description: a.serving_description,
-        ingredients: ingredients.map((i) => ({ name: i.name, db_key: db[i.db_key] ? i.db_key : "", grams: i.grams })),
+        reference: a.reference ?? "",
+        meal: meal ?? mealForTime(new Date(now)),
+        source: "camera",
+        ingredients: ingredients.map((i) => ({
+          name: i.name,
+          db_key: db[i.db_key] ? i.db_key : "",
+          grams: i.grams,
+          dimensions_cm: i.dimensions_cm,
+        })),
         portion_nutrients: ingredients.length ? nutrientsFromIngredients(ingredients, db) : sanitizeNutrients(a.portion_nutrients),
         remaining_percent: observed,
         observations: [observed],
@@ -166,6 +250,32 @@ export function mergeAnalysis(dishes, analysis, { now = Date.now(), makeId = def
     }
   }
   return [...byId.values()];
+}
+
+/** 食品検索から手入力した1品を、食べ終わった料理として作る */
+export function manualDish({ key, name, grams, meal, db, now = Date.now(), makeId = defaultId }) {
+  const ingredients = [{ name, db_key: key, grams }];
+  return {
+    id: makeId(),
+    name,
+    serving_description: `${Math.round(grams)} g`,
+    meal,
+    source: "manual",
+    ingredients,
+    portion_nutrients: nutrientsFromIngredients(ingredients, db),
+    remaining_percent: 0,
+    observations: [0],
+    hits: 1,
+    confidence: 1,
+    confirmed: true,
+    scale: 1,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function zeros() {
+  return Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]));
 }
 
 function median(values) {

@@ -43,11 +43,13 @@ const Analysis = z.object({
       confidence: z.number(),
       remaining_percent: z.number(),
       visible: z.boolean(),
+      reference: z.string(),
       ingredients: z.array(
         z.object({
           name: z.string(),
           db_key: z.string(),
           grams: z.number(),
+          dimensions_cm: z.object({ length: z.number(), width: z.number(), height: z.number() }),
           per100g: Nutrients,
         }),
       ),
@@ -55,7 +57,7 @@ const Analysis = z.object({
   ),
 });
 
-async function analyzeFrame({ image, mediaType, knownDishes }) {
+async function analyzeFrame({ image, mediaType, knownDishes, options }) {
   // 新しい食事の最初の1枚は料理の特定と量の見積もりが重要なので深く考えさせ、
   // 以降の残量の更新は軽く・速くする
   const effort = knownDishes.length ? EFFORT : INITIAL_EFFORT;
@@ -72,7 +74,7 @@ async function analyzeFrame({ image, mediaType, knownDishes }) {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
-          { type: "text", text: buildUserText(knownDishes) },
+          { type: "text", text: buildUserText(knownDishes, options) },
         ],
       },
     ],
@@ -148,7 +150,12 @@ const server = http.createServer(async (req, res) => {
       const result = await analyzeFrame({
         mediaType: match[1],
         image: match[2],
-        knownDishes: Array.isArray(body.knownDishes) ? body.knownDishes : [],
+        knownDishes: Array.isArray(body.knownDishes) ? body.knownDishes.slice(0, 20) : [],
+        options: {
+          lang: ["es", "en", "ja"].includes(body.lang) ? body.lang : "es",
+          plateCm: Math.min(60, Math.max(0, Number(body.plateCm) || 0)),
+          bites: Math.min(50, Math.max(0, Math.round(Number(body.bites) || 0))),
+        },
       });
       sendJson(res, 200, result);
       return;

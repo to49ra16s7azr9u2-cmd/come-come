@@ -1,5 +1,5 @@
 // claude.ai で開けるプレビュー(1ファイルのHTML)を dist/preview.html に書き出す。
-// プレビューでは window.claude の sample 機能で解析するため、サーバーやAPIキーは不要。
+// claude.ai 上ではカメラが使えないため、プレビューはサンプルと手入力で画面を試すためのもの。
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pub = (f) => readFile(path.join(root, "public", f), "utf8");
 
 // 依存順に並べ、import 文と export キーワードを外して1つのモジュールにまとめる
-const modules = ["foods.js", "nutrition.js", "analysis.js", "app.js"];
+const modules = ["foods.js", "i18n.js", "nutrition.js", "analysis.js", "detector.js", "app.js"];
 const script = (await Promise.all(modules.map(pub)))
   .map((src, i) => `// ---- ${modules[i]} ----\n` + src.replace(/^import[\s\S]*?from\s+"[^"]+";\s*$/gm, "").replace(/^export\s+/gm, ""))
   .join("\n");

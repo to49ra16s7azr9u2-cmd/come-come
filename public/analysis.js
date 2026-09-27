@@ -2,44 +2,60 @@
 import { foodKeyList } from "./foods.js";
 import { NUTRIENT_KEYS } from "./nutrition.js";
 
-export const SYSTEM_PROMPT = `あなたは管理栄養士です。食事中の人を映したカメラ画像から、料理とその量を推定します。
+const LANG_NAMES = { es: "Mexican Spanish", en: "English", ja: "Japanese" };
 
-## 手順
-1. 映っている料理・飲み物をすべて見つける。
-2. 新しい料理は、食材ごとに分解する(例: 鮭定食 → ごはん・焼き鮭・味噌汁・漬物)。
-   各食材について、配膳時(手をつける前)の重さ grams を推定する。
-   量は画像内の基準物で見積もる: 茶碗の口径 約12cm / ごはん1杯 約150g、箸 約23cm、
-   スプーン 約18cm、大人の手のひら 約8cm幅、一般的な平皿 約24cm、汁椀1杯 約150ml。
-3. 食材が「食材キー一覧」にあれば db_key にそのキーを入れる(栄養素は表から計算される)。
-   一覧に無い食材は db_key を空文字にし、per100g に100gあたりの栄養素量を推定して入れる。
-   一覧にある食材も per100g は埋めてよい(使われない)。
-4. 各料理の現在の残量を、配膳時を100%とした割合 remaining_percent で推定する。
-   箸やスプーンで持ち上げているだけの分は、まだ残量に含める。
-5. confidence には、料理の特定と量の推定にどれくらい自信があるかを 0〜1 で入れる。
+export const SYSTEM_PROMPT = `You are a registered dietitian watching a live camera feed of someone eating. The default context is Mexico: expect Mexican home cooking, street food and drinks (tacos, quesadillas, enchiladas, chilaquiles, pozole, tamales, frijoles, arroz rojo, tortillas, aguas frescas, refrescos), but recognise any cuisine.
 
-## 既知の料理(前の画像までに見つけたもの)
-- 同じ料理が映っていれば、その id を使い remaining_percent だけ更新する。ingredients は空配列でよい。
-- 映っていなければ visible=false にする。
-- 新しい料理は id を空文字にする。
+## Measure portions like a ruler app
+1. Find reference objects of known size in the frame and use them as a ruler (pixels per cm):
+   - Mexican coins: $10 peso 28 mm, $5 peso 25.5 mm, $1 peso 21 mm. Credit/debit card 85.6 × 54 mm.
+   - Corn tortilla about 14 cm across (taquería tortillas about 11 cm). Dinner plate about 26 cm, side plate about 20 cm.
+   - Fork about 19 cm, tablespoon about 17 cm, 355 ml can 12.2 cm tall and 6.6 cm wide, adult hand about 8.5 cm wide.
+   - If the user's plate diameter is given below, trust it over the defaults.
+2. Measure each food's visible dimensions in cm (length, width, height or depth; use the plate or bowl rim and the food's shadow to judge height).
+3. Convert to volume, then to grams with a realistic density (rice and beans about 0.8–0.9 g/ml, soups and drinks about 1.0 g/ml, meats about 1.0 g/ml, leafy vegetables about 0.2–0.4 g/ml). Count countable items (tortillas, tacos, pieces) directly.
 
-## 食材キー一覧
+## What to return
+- Every dish or drink, split into ingredients. For each ingredient give grams as served (before eating) and its measured dimensions_cm (0 when not measurable).
+- If an ingredient matches the food key list, set db_key to that key (its nutrients come from a table). Otherwise set db_key to "" and estimate per100g. You may fill per100g either way.
+- remaining_percent: how much of the served portion is still there (100 = untouched). Food lifted on a fork or tortilla but not yet in the mouth still counts as remaining.
+- reference: which reference object you used for scale (or "estimated" if none).
+- confidence 0–1 for identification and portion size together.
+- eating: whether the person appears to be eating right now.
+
+## Known dishes from earlier frames
+- If a known dish is visible, reuse its id and only update remaining_percent; ingredients may be an empty array.
+- If a known dish is not visible, return it with visible=false.
+- New dishes get id "".
+
+## Food key list
 ${foodKeyList()}`;
 
-export const OUTPUT_FORMAT_HINT = `次のJSONだけを返してください:
-{"eating": boolean, "scene_note": "状況を日本語で一言",
- "dishes": [{"id": "既知ならID/新規は空文字", "name": "料理名", "serving_description": "例: 茶碗1杯 約150g",
-   "confidence": 0.0〜1.0, "remaining_percent": 0〜100, "visible": boolean,
-   "ingredients": [{"name": "食材名", "db_key": "キーまたは空文字", "grams": 数値,
-     "per100g": {${NUTRIENT_KEYS.map((k) => `"${k}": 数値`).join(", ")}}}]}]}`;
+export function outputFormatHint(lang = "es") {
+  return `Reply with only this JSON. Write name, serving_description, scene_note and ingredient names in ${LANG_NAMES[lang] ?? "Mexican Spanish"}.
+{"eating": boolean, "scene_note": "one short sentence about the scene",
+ "dishes": [{"id": "known id or empty", "name": "dish name", "serving_description": "e.g. 3 tacos",
+   "reference": "reference object used", "confidence": 0.0-1.0, "remaining_percent": 0-100, "visible": boolean,
+   "ingredients": [{"name": "ingredient", "db_key": "key or empty", "grams": number,
+     "dimensions_cm": {"length": number, "width": number, "height": number},
+     "per100g": {${NUTRIENT_KEYS.map((k) => `"${k}": number`).join(", ")}}}]}]}`;
+}
 
-export function buildUserText(knownDishes) {
+/** リクエストごとに変わる部分(既知の料理・言語・皿の大きさ・直前のひと口数) */
+export function buildUserText(knownDishes, { lang = "es", plateCm = 0, bites = 0 } = {}) {
   const known = (knownDishes ?? []).map((d) => ({
     id: d.id,
     name: d.name,
     serving_description: d.serving_description,
     remaining_percent: d.remaining_percent,
   }));
-  return `既知の料理:\n${known.length ? JSON.stringify(known, null, 2) : "(なし)"}`;
+  const lines = [
+    `Output language: ${LANG_NAMES[lang] ?? "Mexican Spanish"}.`,
+    plateCm > 0 ? `The user's usual plate is ${plateCm} cm in diameter.` : "",
+    bites > 0 ? `The on-device detector counted ${bites} bite(s) since the previous frame.` : "",
+    `Known dishes:\n${known.length ? JSON.stringify(known, null, 2) : "(none)"}`,
+  ];
+  return lines.filter(Boolean).join("\n");
 }
 
 /** 形の崩れたJSONでもアプリが壊れないよう、解析結果を正規化する */
@@ -54,8 +70,9 @@ export function normalizeAnalysis(raw) {
       .filter((d) => d && typeof d === "object")
       .map((d) => ({
         id: str(d.id),
-        name: str(d.name) || "不明な料理",
+        name: str(d.name) || "?",
         serving_description: str(d.serving_description),
+        reference: str(d.reference),
         confidence: Math.min(1, Math.max(0, num(d.confidence, 0.5))),
         remaining_percent: num(d.remaining_percent, 100),
         visible: d.visible !== false,
@@ -63,6 +80,11 @@ export function normalizeAnalysis(raw) {
           name: str(i?.name),
           db_key: str(i?.db_key),
           grams: Math.max(0, num(i?.grams)),
+          dimensions_cm: {
+            length: Math.max(0, num(i?.dimensions_cm?.length)),
+            width: Math.max(0, num(i?.dimensions_cm?.width)),
+            height: Math.max(0, num(i?.dimensions_cm?.height)),
+          },
           per100g: Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, Math.max(0, num(i?.per100g?.[k]))])),
         })),
       })),
