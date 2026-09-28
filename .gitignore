@@ -5,3 +5,4 @@ ml/data/
 ml/cache/
 public/models/Xenova/
 ml/data-openverse/
+ml/chains/*.pdf

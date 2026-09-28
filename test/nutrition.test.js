@@ -233,3 +233,19 @@ test("32州すべてに郷土料理があり、料理一覧に存在する", asy
   assert.equal(normalizeProfile({ state: "YUC" }).state, "YUC");
   assert.equal(normalizeProfile({ state: "<script>" }).state, "");
 });
+
+test("チェーン店のメニューを検索でき、公式にない栄養素は不明として扱う", async () => {
+  const { searchChainItems, CHAINS } = await import("../public/chains.js");
+  const { unknownNutrients } = await import("../public/nutrition.js");
+  const [pollo] = searchChainItems("subway pollo 15");
+  assert.equal(pollo.name, "Pollo 15 cm");
+  assert.equal(pollo.nutrients.energy_kcal, 290);
+  assert.equal(pollo.nutrients.salt_g, 1.12, "ナトリウム440mg → 食塩1.12g");
+  assert.equal(pollo.nutrients.calcium_mg, null);
+  for (const row of CHAINS.subway.items) assert.equal(row.length, 9, row[0]);
+  const eaten = { portion_nutrients: pollo.nutrients, remaining_percent: 0 };
+  assert.equal(sumConsumed([eaten]).calcium_mg, 0);
+  assert.ok(unknownNutrients([eaten]).has("calcium_mg"));
+  assert.ok(!unknownNutrients([eaten]).has("energy_kcal"));
+  assert.ok(!unknownNutrients([{ ...eaten, remaining_percent: 100 }]).has("calcium_mg"), "食べていなければ関係ない");
+});

@@ -153,6 +153,16 @@ export function consumedOf(dish) {
   return out;
 }
 
+/** 食べた料理のうち、その栄養素の値が不明(null)なものがある栄養素のキー。チェーン店の公式の表にない栄養素など */
+export function unknownNutrients(dishes) {
+  const out = new Set();
+  for (const d of dishes) {
+    if (d.confirmed === false || (100 - d.remaining_percent) <= 0) continue;
+    for (const k of NUTRIENT_KEYS) if (d.portion_nutrients && d.portion_nutrients[k] === null) out.add(k);
+  }
+  return out;
+}
+
 export function sumConsumed(dishes) {
   const total = zeros();
   for (const d of dishes) {

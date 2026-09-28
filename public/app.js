@@ -15,7 +15,9 @@ import {
   mealForTime,
   bmi,
   nutrientsFromIngredients,
+  unknownNutrients,
 } from "./nutrition.js";
+import { CHAINS, searchChainItems } from "./chains.js";
 import { FOOD_DB, foodName, searchFoods } from "./foods.js";
 import { normalizeAnalysis } from "./analysis.js";
 import { LANGS, t, setLang, getLang, detectLang, applyI18n } from "./i18n.js";
@@ -528,6 +530,8 @@ function render() {
   $("sampleBanner").hidden = !day.dishes.some((d) => d.sample);
   const targets = dailyTargets(profile);
   const results = evaluate(sumConsumed(day.dishes), targets);
+  const unknown = unknownNutrients(day.dishes);
+  for (const r of results) r.partial = unknown.has(r.key);
   renderToday(results, targets);
   renderMeals();
   renderNutrients(results);
@@ -704,7 +708,7 @@ function renderNutrients(results) {
           <span class="pill" data-status="${r.status}"></span>
         </div>
         <div class="meter thin"><div class="meter-fill" data-status="${r.status}" style="width:${Math.min(100, r.ratio * 100)}%"></div></div>
-        <div class="n-nums muted small">${fmt(r.amount, r.unit)} / ${targetText} ${r.unit}</div>`;
+        <div class="n-nums muted small">${fmt(r.amount, r.unit)}${r.partial ? "*" : ""} / ${targetText} ${r.unit}</div>`;
       li.querySelector(".n-label").textContent = t("n." + r.key);
       li.querySelector(".pill").textContent = t("status." + r.status);
       return li;
@@ -718,7 +722,8 @@ function renderAdvice(results) {
   const items = [
     ...lacking.map((r) => {
       const amount = fmt(Math.max(0, (r.target.min ?? r.target.value) - r.amount), r.unit);
-      return ["", t("advice.low", { amount, label: t("n." + r.key), foods: t("hint." + r.key) })];
+      const text = t("advice.low", { amount, label: t("n." + r.key), foods: t("hint." + r.key) });
+      return ["", r.partial ? `${text} ${t("advice.partial")}` : text];
     }),
     ...excess.map((r) => ["warn", t("advice.high", { label: t("n." + r.key), pct: Math.round(r.ratio * 100) })]),
   ];
@@ -854,6 +859,13 @@ function renderSearch() {
     const n = nutrientsFromIngredients(DISHES[d.key].recipe, FOOD_DB);
     return { type: "dish", key: d.key, name: d.name, grams: d.grams, detail: `${Math.round(n.energy_kcal)} kcal · ${t("dish.standardServing")}` };
   });
+  const chains = searchChainItems(q, 15).map((c) => ({
+    type: "chain",
+    key: c.key,
+    name: `${c.chain} · ${c.name}`,
+    grams: c.grams,
+    detail: `${Math.round(c.nutrients.energy_kcal)} kcal · ${c.grams} g · ${t(c.official ? "chain.official" : "chain.estimated")}`,
+  }));
   const foods = searchFoods(q, lang, 20).map((f) => ({
     type: "food",
     key: f.key,
@@ -862,7 +874,7 @@ function renderSearch() {
     detail: `${Math.round(f.per100g.energy_kcal)} kcal/100 g · ${t("add.portion", { g: f.portion_g })}`,
   }));
   $("addResults").replaceChildren(
-    ...[...dishes, ...foods].map((r) => {
+    ...[...chains, ...dishes, ...foods].map((r) => {
       const li = document.createElement("li");
       const b = document.createElement("button");
       b.type = "button";
@@ -904,6 +916,7 @@ $("addDialog").addEventListener("close", () => {
     const ingredients = selectionIngredients(sel);
     return updateDish(replaceTarget, { correctedFrom: [...new Set([...(before?.correctedFrom ?? []), before?.dishKey].filter(Boolean))], name, dishKey: null, ingredients, portion_nutrients: nutrientsFromIngredients(ingredients, FOOD_DB), confirmed: true, corrected: true });
   }
+  if (sel.type === "chain") return addChainItem(sel.key, Number($("addGrams").value) || 0, $("addMeal").value);
   const grams = Number($("addGrams").value) || 0;
   const ingredients = selectionIngredients(sel, grams);
   const dish = manualDish({ key: null, name, grams: 0, meal: $("addMeal").value, db: FOOD_DB });
@@ -916,6 +929,25 @@ $("addDialog").addEventListener("close", () => {
   saveDay();
   render();
 });
+
+/** チェーン店のメニューを追加する。量を変えたときは公式の値を比例させる */
+function addChainItem(key, grams, meal) {
+  const [chainKey, i] = key.split(":");
+  const chain = CHAINS[chainKey];
+  const row = chain.items[Number(i)];
+  const [c] = searchChainItems(`${chain.name} ${row[0]}`, 50).filter((x) => x.key === key);
+  const factor = grams > 0 ? grams / row[2] : 1;
+  const nutrients = Object.fromEntries(Object.entries(c.nutrients).map(([k, v]) => [k, v === null ? null : v * factor]));
+  const dish = manualDish({ key: null, name: `${chain.name} · ${row[0]}`, grams: 0, meal, db: FOOD_DB });
+  dish.portion_nutrients = nutrients;
+  dish.ingredients = [{ name: `${chain.name} · ${row[0]}`, db_key: "", grams: row[2] * factor, source: chain.source }];
+  dish.serving_description = `${Math.round(row[2] * factor)} g · ${t(chain.official ? "chain.official" : "chain.estimated")}`;
+  dish.chainKey = key;
+  clearSample();
+  day.dishes.push(dish);
+  saveDay();
+  render();
+}
 
 // ---- プロフィール(初回は必ず入力してもらう) ----
 function fillProfileForm(onboarding, values = null) {
