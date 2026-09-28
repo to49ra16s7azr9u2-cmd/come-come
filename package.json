@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "build:preview": "node scripts/build-preview.mjs"
+    "build:preview": "node scripts/build-preview.mjs",
+    "fetch-model": "node scripts/fetch-model.mjs",
+    "train": "node ml/train.mjs",
+    "fetch-dataset": "node ml/fetch-commons.mjs"
   },
   "repository": {
     "type": "git",
@@ -20,7 +23,8 @@
   "homepage": "https://github.com/to49ra16s7azr9u2-cmd/come-come#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@huggingface/transformers": "^3.8.1"
   },
   "type": "module",
   "engines": {

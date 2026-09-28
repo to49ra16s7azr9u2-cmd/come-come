@@ -1,3 +1,6 @@
 node_modules/
 .env
 dist/
+ml/data/
+ml/cache/
+public/models/Xenova/

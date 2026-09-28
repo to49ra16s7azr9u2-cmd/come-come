@@ -19,6 +19,8 @@ import { FOOD_DB, foodName, searchFoods } from "./foods.js";
 import { normalizeAnalysis } from "./analysis.js";
 import { LANGS, t, setLang, getLang, detectLang, applyI18n } from "./i18n.js";
 import { loadDetector, BiteTracker, FOOD_CLASSES } from "./detector.js";
+import { loadDishClassifier, DishVote } from "./classifier.js";
+import { DISHES, bitesPerServing } from "./dishes.js";
 
 const $ = (id) => document.getElementById(id);
 const video = $("video");
@@ -108,6 +110,16 @@ let lastBiteAt = 0;
 let lastSignature = null;
 let eatingNow = false;
 
+// 料理の判別: 「端末内」(無料・APIなし)か「クラウド」(Claude・高精度)か
+let cloudAvailable = !PREVIEW;
+let dishClassifier = null;
+let dishClassifierLoading = null;
+let classifying = false;
+let lastClassifyAt = 0;
+let dishVote = new DishVote();
+let liveDish = null;
+const useCloud = () => cloudAvailable && settings.analysis !== "device";
+
 async function startCamera() {
   stopCamera();
   if (accessRequired && !accessCode && !(await askAccessCode())) return false;
@@ -142,7 +154,23 @@ async function startCamera() {
     detectorLoading ??= loadDetector().then((d) => (detector = d));
     await detectorLoading;
   }
-  setStatus(t("status.watching"));
+  dishVote = new DishVote();
+  liveDish = null;
+  if (!useCloud() && !dishClassifier) {
+    // 初回だけ約 88 MB のモデルをダウンロードする(以降はブラウザに保存される)
+    setStatus(t("status.loadingDishModel", { pct: 0 }), "busy");
+    dishClassifierLoading ??= loadDishClassifier({
+      onProgress: (p) => setStatus(t("status.loadingDishModel", { pct: Math.round(p * 100) }), "busy"),
+    })
+      .then((c) => (dishClassifier = c))
+      .catch((err) => {
+        dishClassifierLoading = null;
+        setStatus(t("status.failed", { error: err.message }), "error");
+      });
+    await dishClassifierLoading;
+    if (!stream) return false;
+  }
+  setStatus(t(useCloud() ? "status.watching" : "status.watchingDevice"));
   loop();
   return true;
 }
@@ -154,7 +182,9 @@ function stopCamera() {
   stream = null;
   video.srcObject = null;
   detections = [];
+  liveDish = null;
   drawOverlay();
+  $("liveDish").hidden = true;
   $("placeholder").hidden = false;
   $("live").hidden = true;
   $("startBtn").textContent = t("btn.start");
@@ -185,10 +215,71 @@ function loop() {
       .catch(() => {})
       .finally(() => (detecting = false));
   }
+  if (!useCloud() && dishClassifier && !classifying && now - lastClassifyAt > 1000) {
+    lastClassifyAt = now;
+    classifying = true;
+    dishClassifier
+      .classify(video)
+      .then((ranked) => {
+        liveDish = ranked[0];
+        const stable = dishVote.push(ranked[0]);
+        if (stable) onDeviceDish(stable);
+        updateLive();
+      })
+      .catch(() => {})
+      .finally(() => (classifying = false));
+  }
   if (now - lastScheduleAt > 500) {
     lastScheduleAt = now;
-    maybeAnalyze();
+    if (useCloud()) maybeAnalyze();
+    else if (pendingBites > 0) applyDeviceBites();
   }
+}
+
+// ---- 端末内モード: 料理名は端末内AI、量は標準の1皿、食べた量はひと口の回数から見積もる ----
+function onDeviceDish({ key, prob }) {
+  const lang = getLang();
+  const active = activeDishes();
+  const existing = active.find((d) => d.dishKey === key);
+  const dish = DISHES[key];
+  const analysis = {
+    dishes: [
+      existing
+        ? { id: existing.id, remaining_percent: existing.remaining_percent, visible: true }
+        : {
+            id: "",
+            name: dish.names[lang] ?? dish.names.en,
+            serving_description: t("dish.standardServing"),
+            reference: t("dish.onDevice"),
+            confidence: prob,
+            remaining_percent: 100,
+            visible: true,
+            ingredients: dish.recipe.map((r) => ({ name: foodName(r.db_key, lang), db_key: r.db_key, grams: r.grams })),
+          },
+    ],
+  };
+  // 同じ料理が続けて確定しても、確認の回数を増やすだけにする(数秒に1回まで)
+  if (existing && Date.now() - (existing.updated_at ?? 0) < 5000) return;
+  const merged = mergeAnalysis(active, analysis, { db: FOOD_DB, meal: active[0]?.meal });
+  for (const d of merged) if (!d.dishKey && !active.some((a) => a.id === d.id)) d.dishKey = key;
+  const others = day.dishes.filter((d) => !day.activeIds.includes(d.id));
+  day.dishes = [...others, ...merged];
+  day.activeIds = merged.map((d) => d.id);
+  saveDay();
+  render();
+  const name = dish.names[lang] ?? dish.names.en;
+  setStatus(t("status.deviceDish", { name, pct: Math.round(prob * 100) }));
+}
+
+function applyDeviceBites() {
+  const active = activeDishes().filter((d) => d.confirmed !== false && d.remaining_percent > 0);
+  if (!active.length) return;
+  // いま映っている料理を優先し、なければ最後に見つけた料理から減らす
+  const target = active.find((d) => d.dishKey && d.dishKey === liveDish?.key) ?? active[active.length - 1];
+  const share = (100 / bitesPerServing(target.dishKey)) * pendingBites;
+  pendingBites = 0;
+  const remaining = Math.max(0, target.remaining_percent - share);
+  updateDish(target.id, { remaining_percent: remaining, observations: [remaining], updated_at: Date.now() });
 }
 
 function foodVisible() {
@@ -326,8 +417,6 @@ function drawOverlay() {
   const dx = (W - video.videoWidth * scale) / 2;
   const dy = (H - video.videoHeight * scale) / 2;
   const mirror = video.classList.contains("mirror");
-  ctx.font = "600 12px system-ui, sans-serif";
-  ctx.lineWidth = 2;
   for (const d of detections) {
     const isFood = FOOD_CLASSES.has(d.label);
     if (!isFood && d.label !== "person") continue;
@@ -335,20 +424,21 @@ function drawOverlay() {
     x += dx;
     y += dy;
     if (mirror) x = W - x - w;
-    const color = isFood ? "#8ea8ff" : "rgba(255,255,255,.55)";
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = isFood ? "rgba(142,168,255,.8)" : "rgba(255,255,255,.35)";
+    ctx.lineWidth = isFood ? 2 : 1;
     ctx.strokeRect(x, y, w, h);
-    const label = `${d.label} ${Math.round(d.score * 100)}%`;
-    const tw = ctx.measureText(label).width + 8;
-    ctx.fillStyle = color;
-    ctx.fillRect(x, Math.max(0, y - 18), tw, 18);
-    ctx.fillStyle = "#12151c";
-    ctx.fillText(label, x + 4, Math.max(13, y - 5));
   }
 }
 
 function updateLive() {
   $("liveBites").textContent = bites.bites;
+  const chip = $("liveDish");
+  const show = !useCloud() && liveDish?.key && liveDish.prob >= 0.2;
+  chip.hidden = !show;
+  if (show) {
+    const d = DISHES[liveDish.key];
+    chip.textContent = `${d.names[getLang()] ?? d.names.en} · ${Math.round(liveDish.prob * 100)}%`;
+  }
   const state = $("liveState");
   const eating = eatingNow || Date.now() - lastBiteAt < 5000;
   state.textContent = eating ? t("live.eating") : t("live.waiting");
@@ -698,6 +788,7 @@ function fillProfileForm(onboarding, values = null) {
   $("pfGoal").innerHTML = GOALS.map((g) => `<option value="${g}">${t("goal." + g)}</option>`).join("");
   $("pfCountry").innerHTML = COUNTRIES.map((c) => `<option value="${c}">${t("country." + c)}</option>`).join("");
   $("pfPlan").innerHTML = ["free", "premium"].map((p) => `<option value="${p}">${t("plan." + p)}</option>`).join("");
+  $("pfAnalysis").innerHTML = ["device", "cloud"].map((m) => `<option value="${m}" ${m === "cloud" && !cloudAvailable ? "disabled" : ""}>${t("analysis." + m)}</option>`).join("");
   const v = values ?? {
     lang: getLang(),
     sex: profile.sex,
@@ -710,6 +801,7 @@ function fillProfileForm(onboarding, values = null) {
     country: profile.country,
     plate_cm: profile.plate_cm || "",
     plan: settings.plan,
+    analysis: useCloud() ? "cloud" : "device",
   };
   const form = $("profileForm");
   for (const [k, val] of Object.entries(v)) if (form.elements[k]) form.elements[k].value = val;
@@ -739,9 +831,11 @@ $("profileDialog").addEventListener("close", () => {
     render();
     return;
   }
-  const { lang, plan, ...f } = Object.fromEntries(new FormData($("profileForm")));
+  const { lang, plan, analysis, ...f } = Object.fromEntries(new FormData($("profileForm")));
   profile = { ...normalizeProfile({ ...profile, ...f }), onboarded: true };
-  settings = { ...settings, lang, plan };
+  const modeChanged = (analysis ?? settings.analysis) !== settings.analysis;
+  settings = { ...settings, lang, plan, analysis: analysis ?? settings.analysis };
+  if (modeChanged && stream) startCamera();
   store.set("come-come:profile", profile);
   store.set("come-come:settings", settings);
   if (!weights[currentDate]) {
@@ -861,6 +955,9 @@ if (!profile.onboarded) openProfile(true);
 if (!PREVIEW) {
   fetch("/api/config")
     .then((r) => r.json())
-    .then((c) => (accessRequired = Boolean(c.accessCodeRequired)))
+    .then((c) => {
+      accessRequired = Boolean(c.accessCodeRequired);
+      cloudAvailable = c.cloudAvailable !== false;
+    })
     .catch(() => {});
 }

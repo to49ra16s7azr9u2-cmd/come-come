@@ -146,3 +146,34 @@ test("文言は既定でスペイン語、ブラウザの言語に合わせて�
   assert.deepEqual(Object.keys(DICTIONARY.ja).sort(), keys);
   setLang("es");
 });
+
+test("料理一覧の材料はすべて成分表にあり、端末内AIの分類ヘッドと一致する", async () => {
+  const { DISHES, DISH_KEYS, bitesPerServing, dishPrompts } = await import("../public/dishes.js");
+  for (const [key, d] of Object.entries(DISHES)) {
+    assert.ok(d.recipe.length > 0, key);
+    for (const r of d.recipe) assert.ok(FOOD_DB[r.db_key], `${key}: ${r.db_key}`);
+    assert.ok(bitesPerServing(key) > 0);
+    assert.equal(dishPrompts(key).length, 4);
+  }
+  const { readFile } = await import("node:fs/promises");
+  const head = JSON.parse(await readFile(new URL("../public/models/dish-head.json", import.meta.url), "utf8"));
+  assert.deepEqual(head.keys, DISH_KEYS, "料理を増減したら ml/train.mjs で分類ヘッドを作り直す");
+  assert.equal(head.prototypes.length, DISH_KEYS.length);
+});
+
+test("端末内AIの確率計算と多数決", async () => {
+  const { scoreEmbedding, DishVote } = await import("../public/classifier.js");
+  const head = { keys: ["a", "b"], prototypes: [[1, 0, 0], [0, 1, 0]], nonFood: [[0, 0, 1]] };
+  const r = scoreEmbedding([2, 0.1, 0], head);
+  assert.equal(r[0].key, "a");
+  assert.ok(Math.abs(r.reduce((s, x) => s + x.prob, 0) - 1) < 1e-9);
+  assert.equal(scoreEmbedding([0, 0, 5], head)[0].key, null, "料理ではないもの");
+  const v = new DishVote({ window: 5, minVotes: 3, minProb: 0.35 });
+  assert.equal(v.push({ key: "a", prob: 0.9 }), null);
+  assert.equal(v.push({ key: "b", prob: 0.9 }), null);
+  assert.equal(v.push({ key: "a", prob: 0.2 }), null, "確率の低いフレームは数えない");
+  assert.equal(v.push({ key: "a", prob: 0.6 }), null);
+  const out = v.push({ key: "a", prob: 0.6 });
+  assert.equal(out.key, "a");
+  assert.ok(Math.abs(out.prob - 0.7) < 1e-9, "確率は投票したフレームの平均");
+});

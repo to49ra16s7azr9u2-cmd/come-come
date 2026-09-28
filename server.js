@@ -1,6 +1,7 @@
 import http from "node:http";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
@@ -155,27 +156,60 @@ function sendJson(res, status, body) {
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
   ".json": "application/json",
   ".webmanifest": "application/manifest+json",
   ".png": "image/png",
+  ".wasm": "application/wasm",
+  ".onnx": "application/octet-stream",
 };
+
+// 端末内AIのライブラリ(transformers.js と ONNX Runtime)は node_modules から配信する。配信してよいファイルだけを列挙する
+const VENDOR_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "node_modules/@huggingface/transformers/dist");
+const VENDOR_FILES = new Set(["transformers.min.js", "ort-wasm-simd-threaded.jsep.mjs", "ort-wasm-simd-threaded.jsep.wasm"]);
+
+function resolveStatic(urlPath) {
+  if (urlPath.startsWith("/vendor/transformers/")) {
+    const name = urlPath.slice("/vendor/transformers/".length);
+    return VENDOR_FILES.has(name) ? path.join(VENDOR_DIR, name) : null;
+  }
+  const filePath = path.normalize(path.join(PUBLIC_DIR, urlPath === "/" ? "index.html" : urlPath));
+  return filePath.startsWith(PUBLIC_DIR + path.sep) ? filePath : null;
+}
 
 async function serveStatic(req, res) {
   const urlPath = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
-  const filePath = path.normalize(path.join(PUBLIC_DIR, urlPath === "/" ? "index.html" : urlPath));
-  if (!filePath.startsWith(PUBLIC_DIR + path.sep)) {
+  const filePath = resolveStatic(urlPath);
+  if (!filePath) {
     res.writeHead(403).end();
     return;
   }
+  let info;
   try {
-    const data = await readFile(filePath);
-    res.writeHead(200, { "content-type": MIME[path.extname(filePath)] ?? "application/octet-stream", "cache-control": "no-cache", ...SECURITY_HEADERS });
-    res.end(data);
+    info = await stat(filePath);
+    if (!info.isFile()) throw new Error("not a file");
   } catch {
     res.writeHead(404).end("Not found");
+    return;
   }
+  // 大きなファイル(モデル 88 MB、WebAssembly 21 MB)はメモリに読み込まずに流し、ブラウザには保存して使い回してもらう
+  const etag = `"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+  const big = /\.(onnx|wasm)$/.test(filePath) || urlPath.startsWith("/vendor/");
+  const headers = {
+    "content-type": MIME[path.extname(filePath)] ?? "application/octet-stream",
+    "cache-control": big ? "public, max-age=604800" : "no-cache",
+    etag,
+    ...SECURITY_HEADERS,
+  };
+  if (req.headers["if-none-match"] === etag) {
+    res.writeHead(304, headers).end();
+    return;
+  }
+  res.writeHead(200, { ...headers, "content-length": info.size });
+  if (req.method === "HEAD") return res.end();
+  createReadStream(filePath).on("error", () => res.destroy()).pipe(res);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -185,7 +219,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && req.url === "/api/config") {
-      sendJson(res, 200, { accessCodeRequired: Boolean(ACCESS_CODE) });
+      sendJson(res, 200, { accessCodeRequired: Boolean(ACCESS_CODE), cloudAvailable: Boolean(process.env.ANTHROPIC_API_KEY) });
       return;
     }
     if (req.method === "POST" && req.url === "/api/analyze") {
@@ -207,7 +241,7 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, result);
       return;
     }
-    if (req.method === "GET") {
+    if (req.method === "GET" || req.method === "HEAD") {
       await serveStatic(req, res);
       return;
     }

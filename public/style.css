@@ -157,6 +157,9 @@ dialog label { display: grid; gap: 4px; margin-bottom: 12px; font-size: 0.9rem; 
   color: #fff; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .live > * { background: rgba(0,0,0,.55); padding: 3px 10px; border-radius: 999px; }
 .live-state.on { background: var(--ok); }
+.live-dish { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 20px);
+  background: rgba(0,0,0,.65); color: #fff; font-weight: 700; font-size: 0.9rem; padding: 4px 12px; border-radius: 999px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .premium-tag { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; padding: 1px 6px; border-radius: 6px;
   background: var(--accent); color: var(--accent-ink); vertical-align: middle; }
 

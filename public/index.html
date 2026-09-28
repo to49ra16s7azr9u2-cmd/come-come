@@ -36,6 +36,7 @@
         <video id="video" playsinline muted></video>
         <canvas id="overlay" class="overlay"></canvas>
         <div id="placeholder" class="placeholder" data-i18n="btn.start"></div>
+        <div id="liveDish" class="live-dish" aria-live="polite" hidden></div>
         <div class="live" id="live" hidden>
           <span id="liveState" class="live-state"></span>
           <span><span data-i18n="live.bites"></span> <strong id="liveBites">0</strong></span>
@@ -121,6 +122,7 @@
         <label><span data-i18n="profile.goal"></span><select id="pfGoal" name="goal"></select></label>
         <label><span data-i18n="profile.country"></span><select id="pfCountry" name="country"></select></label>
         <label class="wide"><span data-i18n="profile.plate"></span><input id="pfPlate" name="plate_cm" type="number" min="0" max="60" step="0.5" /></label>
+        <label class="wide"><span data-i18n="profile.analysis"></span><select id="pfAnalysis" name="analysis"></select></label>
         <label class="wide"><span data-i18n="profile.plan"></span><select id="pfPlan" name="plan"></select></label>
       </div>
       <div class="dialog-actions">
