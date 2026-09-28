@@ -44,6 +44,7 @@ export const DEFAULT_PROFILE = {
   goal: "maintain",
   country: "MX",
   plate_cm: 0,
+  state: "",
 };
 
 /** 古い形式(年齢が "30-49" など)のプロフィールも読めるようにする */
@@ -59,6 +60,7 @@ export function normalizeProfile(p = {}) {
   out.goal = GOALS.includes(out.goal) ? out.goal : "maintain";
   out.country = COUNTRIES.includes(out.country) ? out.country : "MX";
   out.plate_cm = Math.max(0, num(out.plate_cm, 0));
+  out.state = typeof out.state === "string" && /^[A-Z]{2,5}$/.test(out.state) ? out.state : "";
   return out;
 }
 

@@ -117,6 +117,8 @@ const DISH_RAW = {
     [["cookies", 45]]],
 };
 
+import { REGIONAL_DISHES, STATES } from "./regional.js";
+
 // 料理ではないもの(判別AIが「料理が映っていない」と判断するための比較対象)
 export const NON_FOOD_PROMPTS = [
   "an empty plate",
@@ -126,8 +128,11 @@ export const NON_FOOD_PROMPTS = [
   "a smartphone screen",
 ];
 
+// 郷土料理(regional.js)は行の最後に「1皿を何口で食べるか」を持つ
+const REGIONAL_BITES = Object.fromEntries(Object.entries(REGIONAL_DISHES).map(([k, row]) => [k, row[3]]));
+
 export const DISHES = Object.fromEntries(
-  Object.entries(DISH_RAW).map(([key, [[es, ja, en], prompt, recipe]]) => [
+  Object.entries({ ...DISH_RAW, ...REGIONAL_DISHES }).map(([key, [[es, ja, en], prompt, recipe]]) => [
     key,
     { names: { es, ja, en }, prompt, recipe: recipe.map(([db_key, grams]) => ({ db_key, grams })) },
   ]),
@@ -155,7 +160,7 @@ const BITES_PER_SERVING = {
   pollo_frito: 10, sushi: 8, huevos_estrellados: 6, sandwich: 8, cereal: 15, cafe: 10, agua: 8, pastel: 8, helado: 12, galletas: 4,
 };
 export function bitesPerServing(key) {
-  return BITES_PER_SERVING[key] ?? 15;
+  return BITES_PER_SERVING[key] ?? REGIONAL_BITES[key] ?? 15;
 }
 
 /** 1皿の標準の重さ(g) */
@@ -171,4 +176,11 @@ export function searchDishes(query, lang = "es", limit = 20) {
   const entries = Object.entries(DISHES);
   const hits = q ? entries.filter(([k, d]) => [k, ...Object.values(d.names)].some((n) => fold(n).includes(q))) : entries;
   return hits.slice(0, limit).map(([key, d]) => ({ key, name: d.names[lang] ?? d.names.en, grams: dishGrams(key) }));
+}
+
+export { STATES };
+
+/** その料理が代表的な州(州コードの配列) */
+export function dishStates(key) {
+  return Object.entries(STATES).filter(([, st]) => st.dishes.includes(key)).map(([code]) => code);
 }

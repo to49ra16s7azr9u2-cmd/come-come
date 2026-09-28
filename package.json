@@ -9,7 +9,8 @@
     "build:preview": "node scripts/build-preview.mjs",
     "fetch-model": "node scripts/fetch-model.mjs",
     "train": "node ml/train.mjs",
-    "fetch-dataset": "node ml/fetch-commons.mjs"
+    "fetch-dataset": "node ml/fetch-commons.mjs",
+    "coverage": "node ml/coverage.mjs"
   },
   "repository": {
     "type": "git",

@@ -83,3 +83,15 @@ export class DishVote {
     return Object.entries(sum).sort((a, b) => b[1] - a[1]).slice(0, k).map(([key, prob]) => ({ key, prob }));
   }
 }
+
+/**
+ * 利用者の州の郷土料理を少しだけ優先する(事前確率)。画像の判断を覆すほど強くはしない。
+ * boost 倍してから確率の合計が 1 になるよう割り直す。
+ */
+export function applyStatePrior(ranked, stateDishes = [], boost = 1.5) {
+  if (!stateDishes.length) return ranked;
+  const set = new Set(stateDishes);
+  const w = ranked.map((r) => ({ ...r, prob: r.prob * (r.key && set.has(r.key) ? boost : 1) }));
+  const total = w.reduce((s, r) => s + r.prob, 0) || 1;
+  return w.map((r) => ({ ...r, prob: r.prob / total })).sort((a, b) => b.prob - a.prob);
+}

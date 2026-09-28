@@ -104,6 +104,25 @@ const RAW = {
   birria: [["Birria", "ビリア(煮込み肉)", "Birria stew"], 300, 150, 14.0, 9.0, 3.0, 0.7, 0.8, 20, 1.8, 30, 0.06, 0.15, 3, 0.1],
   esquites: [["Esquites", "エスキーテス(カップのとうもろこし)", "Esquites corn cup"], 200, 150, 3.5, 8.0, 18.0, 2.0, 0.6, 40, 0.5, 20, 0.08, 0.07, 5, 0.1],
   churros: [["Churros", "チュロス", "Churros"], 60, 450, 5.0, 24.0, 54.0, 1.5, 0.4, 20, 1.5, 0, 0.15, 0.1, 0, 0],
+  // --- 追加: 州ごとの郷土料理の材料(概算値) ---
+  cochinita: [["Cochinita pibil (carne)", "コチニータ・ピビル(豚肉)", "Achiote pulled pork"], 120, 220, 24.0, 13.0, 2.0, 0.3, 1.0, 20, 1.5, 20, 0.6, 0.25, 2, 0.5],
+  barbacoa: [["Barbacoa", "バルバコア(蒸し焼き肉)", "Barbacoa (pit-cooked meat)"], 100, 230, 24.0, 14.0, 0, 0, 0.8, 15, 2.5, 0, 0.1, 0.25, 0, 0.1],
+  cecina: [["Cecina", "セシーナ(塩漬け牛肉)", "Cecina (salted beef)"], 120, 250, 30.0, 13.0, 0, 0, 3.0, 12, 3.0, 0, 0.08, 0.2, 0, 0.1],
+  machaca: [["Machaca", "マチャカ(干し牛肉)", "Machaca (dried beef)"], 40, 380, 55.0, 15.0, 3.0, 0, 4.5, 20, 5.0, 0, 0.1, 0.3, 0, 0.1],
+  cabrito: [["Cabrito asado", "子ヤギのロースト", "Roast kid goat"], 200, 143, 27.0, 3.0, 0, 0, 0.2, 17, 3.7, 0, 0.1, 0.6, 0, 0],
+  menudo: [["Menudo / pancita", "メヌード(牛の胃のスープ)", "Menudo (tripe soup)"], 400, 70, 7.0, 3.5, 3.0, 0.5, 0.6, 30, 0.8, 5, 0.02, 0.05, 1, 0],
+  fried_fish: [["Pescado empanizado / frito", "白身魚のフライ", "Battered fried fish"], 100, 230, 20.0, 13.0, 8.0, 0.4, 0.6, 20, 0.7, 10, 0.08, 0.1, 0, 2.0],
+  octopus: [["Pulpo cocido", "タコ(加熱)", "Octopus, cooked"], 60, 164, 30.0, 2.0, 4.4, 0, 0.6, 106, 9.5, 90, 0.06, 0.08, 8, 0],
+  chapulines: [["Chapulines", "チャプリネス(バッタ)", "Toasted grasshoppers"], 30, 400, 55.0, 12.0, 12.0, 8.0, 1.5, 70, 8.0, 0, 0.1, 1.0, 0, 0],
+  pipian: [["Pipián / salsa de pepita", "ピピアン(かぼちゃの種のソース)", "Pumpkin-seed sauce"], 100, 180, 6.0, 14.0, 8.0, 3.0, 0.8, 30, 3.0, 20, 0.08, 0.06, 2, 0],
+  pork_stew: [["Guisado de cerdo en chile", "豚肉の唐辛子煮込み", "Pork stewed in chile"], 150, 200, 18.0, 12.0, 5.0, 1.0, 0.9, 20, 1.5, 40, 0.6, 0.2, 5, 0.3],
+  beef_stew: [["Guisado / caldo de res", "牛肉の煮込み・スープ", "Beef stew or broth"], 300, 130, 14.0, 6.0, 5.0, 1.0, 0.8, 15, 1.8, 20, 0.05, 0.12, 5, 0.1],
+  seafood_broth: [["Caldo de mariscos", "シーフードスープ", "Seafood broth"], 300, 50, 7.0, 1.2, 3.0, 0.5, 0.8, 30, 0.8, 15, 0.03, 0.04, 4, 0.5],
+  atole: [["Atole / champurrado", "アトレ(とうもろこしの温かい飲み物)", "Atole (hot corn drink)"], 300, 90, 2.5, 2.5, 15.0, 0.5, 0.05, 80, 0.4, 20, 0.04, 0.12, 0, 0.3],
+  pozol: [["Pozol / tejate", "ポソル(カカオととうもろこしの飲み物)", "Pozol (cacao-corn drink)"], 350, 70, 1.5, 1.0, 14.0, 1.5, 0, 30, 0.8, 0, 0.04, 0.02, 0, 0],
+  tepache: [["Tepache", "テパチェ(パイナップルの発酵飲料)", "Tepache"], 350, 40, 0.1, 0, 10.0, 0.2, 0, 10, 0.2, 0, 0.02, 0.01, 3, 0],
+  tejuino: [["Tejuino", "テフイノ(発酵とうもろこし飲料)", "Tejuino"], 350, 60, 0.8, 0.3, 14.0, 0.5, 0.3, 20, 0.3, 0, 0.02, 0.01, 2, 0],
+  plantain_fried: [["Plátano macho frito", "揚げ料理用バナナ", "Fried plantain"], 80, 180, 1.0, 7.0, 30.0, 2.3, 0, 3, 0.6, 50, 0.05, 0.05, 10, 0],
 };
 
 const FIELDS = ["energy_kcal", "protein_g", "fat_g", "carbs_g", "fiber_g", "salt_g", "calcium_mg", "iron_mg", "vitamin_a_ug", "vitamin_b1_mg", "vitamin_b2_mg", "vitamin_c_mg", "vitamin_d_ug"];

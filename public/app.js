@@ -20,8 +20,8 @@ import { FOOD_DB, foodName, searchFoods } from "./foods.js";
 import { normalizeAnalysis } from "./analysis.js";
 import { LANGS, t, setLang, getLang, detectLang, applyI18n } from "./i18n.js";
 import { loadDetector, BiteTracker, FOOD_CLASSES } from "./detector.js";
-import { loadDishClassifier, DishVote } from "./classifier.js";
-import { DISHES, bitesPerServing, searchDishes, dishGrams } from "./dishes.js";
+import { loadDishClassifier, DishVote, applyStatePrior } from "./classifier.js";
+import { DISHES, STATES, bitesPerServing, searchDishes, dishGrams } from "./dishes.js";
 
 const $ = (id) => document.getElementById(id);
 const video = $("video");
@@ -233,7 +233,8 @@ function loop() {
     classifying = true;
     dishClassifier
       .classify(video)
-      .then((ranked) => {
+      .then((raw) => {
+        const ranked = applyStatePrior(raw, STATES[profile.state]?.dishes);
         liveDish = ranked[0];
         const stable = dishVote.push(ranked);
         if (stable) onDeviceDish(stable);
@@ -378,6 +379,7 @@ async function analyzeFrame() {
           knownDishes: activeDishes(),
           lang: getLang(),
           plateCm: profile.plate_cm,
+          state: profile.state,
           bites: bitesNow,
         }),
       });
@@ -924,6 +926,7 @@ function fillProfileForm(onboarding, values = null) {
   $("pfActivity").innerHTML = ACTIVITY_FACTORS.map((_, i) => `<option value="${i}">${t("activity." + i)}</option>`).join("");
   $("pfGoal").innerHTML = GOALS.map((g) => `<option value="${g}">${t("goal." + g)}</option>`).join("");
   $("pfCountry").innerHTML = COUNTRIES.map((c) => `<option value="${c}">${t("country." + c)}</option>`).join("");
+  $("pfState").innerHTML = [`<option value="">${t("profile.stateNone")}</option>`, ...Object.entries(STATES).sort((a, b) => a[1].name.localeCompare(b[1].name, "es")).map(([c, st]) => `<option value="${c}">${st.name}</option>`)].join("");
   $("pfPlan").innerHTML = ["free", "premium"].map((p) => `<option value="${p}">${t("plan." + p)}</option>`).join("");
   $("pfAnalysis").innerHTML = ["device", "cloud"].map((m) => `<option value="${m}" ${m === "cloud" && !cloudAvailable ? "disabled" : ""}>${t("analysis." + m)}</option>`).join("");
   const v = values ?? {
@@ -937,6 +940,7 @@ function fillProfileForm(onboarding, values = null) {
     goal: profile.goal,
     country: profile.country,
     plate_cm: profile.plate_cm || "",
+    state: profile.state,
     plan: settings.plan,
     analysis: useCloud() ? "cloud" : "device",
   };

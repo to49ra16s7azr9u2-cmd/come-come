@@ -8,7 +8,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pub = (f) => readFile(path.join(root, "public", f), "utf8");
 
 // 依存順に並べ、import 文と export キーワードを外して1つのモジュールにまとめる
-const modules = ["foods.js", "dishes.js", "i18n.js", "nutrition.js", "analysis.js", "detector.js", "classifier.js", "app.js"];
+const modules = ["foods.js", "regional.js", "dishes.js", "i18n.js", "nutrition.js", "analysis.js", "detector.js", "classifier.js", "app.js"];
 const script = (await Promise.all(modules.map(pub)))
   .map((src, i) => `// ---- ${modules[i]} ----\n` + src.replace(/^import[\s\S]*?from\s+"[^"]+";\s*$/gm, "").replace(/^export\s+/gm, ""))
   .join("\n");

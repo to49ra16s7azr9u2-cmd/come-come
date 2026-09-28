@@ -237,6 +237,7 @@ const server = http.createServer(async (req, res) => {
         options: {
           lang: ["es", "en", "ja"].includes(body.lang) ? body.lang : "es",
           plateCm: Math.min(60, Math.max(0, Number(body.plateCm) || 0)),
+          state: typeof body.state === "string" ? body.state.slice(0, 5) : "",
           bites: Math.min(50, Math.max(0, Math.round(Number(body.bites) || 0))),
         },
       });

@@ -210,3 +210,26 @@ test("クラウドの解析結果から料理キーと候補を受け取り、�
   assert.deepEqual(d.candidates, ["tacos_asada", "tacos_pastor", "tacos_carnitas"]);
   assert.equal(normalizeAnalysis({ dishes: [{ dish_key: "made_up" }] }).dishes[0].dish_key, "");
 });
+
+test("州の郷土料理を少しだけ優先し、確率の合計は1のまま", async () => {
+  const { applyStatePrior } = await import("../public/classifier.js");
+  const ranked = [{ key: "a", prob: 0.5 }, { key: "b", prob: 0.4 }, { key: null, prob: 0.1 }];
+  const r = applyStatePrior(ranked, ["b"]);
+  assert.equal(r[0].key, "b", "0.4×1.5=0.6 > 0.5");
+  assert.ok(Math.abs(r.reduce((s, x) => s + x.prob, 0) - 1) < 1e-9);
+  assert.equal(applyStatePrior([{ key: "a", prob: 0.9 }, { key: "b", prob: 0.1 }], ["b"])[0].key, "a", "画像の判断が強ければ覆さない");
+  assert.deepEqual(applyStatePrior(ranked, []), ranked);
+});
+
+test("32州すべてに郷土料理があり、料理一覧に存在する", async () => {
+  const { STATES, DISHES, dishStates } = await import("../public/dishes.js");
+  assert.equal(Object.keys(STATES).length, 32);
+  for (const [code, st] of Object.entries(STATES)) {
+    assert.ok(st.dishes.length >= 5, code);
+    for (const k of st.dishes) assert.ok(DISHES[k], `${code}: ${k}`);
+  }
+  assert.ok(dishStates("cochinita_pibil").includes("YUC"));
+  const { normalizeProfile } = await import("../public/nutrition.js");
+  assert.equal(normalizeProfile({ state: "YUC" }).state, "YUC");
+  assert.equal(normalizeProfile({ state: "<script>" }).state, "");
+});

@@ -1,6 +1,6 @@
 // 画像解析のプロンプトと結果の正規化。サーバー(Claude API)とプレビュー(claude.ai上)で共有する。
 import { foodKeyList } from "./foods.js";
-import { DISHES } from "./dishes.js";
+import { DISHES, STATES } from "./dishes.js";
 import { NUTRIENT_KEYS } from "./nutrition.js";
 
 const LANG_NAMES = { es: "Mexican Spanish", en: "English", ja: "Japanese" };
@@ -48,7 +48,7 @@ export function outputFormatHint(lang = "es") {
 }
 
 /** リクエストごとに変わる部分(既知の料理・言語・皿の大きさ・直前のひと口数) */
-export function buildUserText(knownDishes, { lang = "es", plateCm = 0, bites = 0 } = {}) {
+export function buildUserText(knownDishes, { lang = "es", plateCm = 0, bites = 0, state = "" } = {}) {
   const known = (knownDishes ?? []).map((d) => ({
     id: d.id,
     name: d.name,
@@ -58,6 +58,7 @@ export function buildUserText(knownDishes, { lang = "es", plateCm = 0, bites = 0
   const lines = [
     `Output language: ${LANG_NAMES[lang] ?? "Mexican Spanish"}.`,
     plateCm > 0 ? `The user's usual plate is ${plateCm} cm in diameter.` : "",
+    STATES[state] ? `The user lives in ${STATES[state].name}, Mexico. When a dish is ambiguous, prefer that state's regional dishes: ${STATES[state].dishes.join(", ")}.` : "",
     bites > 0 ? `The on-device detector counted ${bites} bite(s) since the previous frame.` : "",
     `Known dishes:\n${known.length ? JSON.stringify(known, null, 2) : "(none)"}`,
   ];

@@ -3,6 +3,7 @@
 import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { DISHES } from "../public/dishes.js";
 
 const OUT = new URL("./data/", import.meta.url).pathname;
 const PER_CLASS = Number(process.env.PER_CLASS) || 40;
@@ -99,8 +100,12 @@ async function search(query, byCategory) {
 
 const attribution = existsSync(OUT + "attribution.json") ? JSON.parse(await readFile(OUT + "attribution.json", "utf8")) : {};
 const only = process.argv.slice(2);
-for (const [key, queries] of Object.entries(QUERIES)) {
+// 検索語が決めていない料理(州の郷土料理など)は、スペイン語名と英語名で探す
+const ALL = Object.fromEntries(Object.entries(DISHES).map(([k, d]) => [k, QUERIES[k] ?? [d.names.es, d.names.en]]));
+for (const [key, queries] of Object.entries(ALL)) {
   if (only.length && !only.includes(key)) continue;
+  // 引数なしで実行したときは、すでに集めた料理は取り直さない
+  if (!only.length && existsSync(path.join(OUT, key))) continue;
   const dir = path.join(OUT, key);
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
