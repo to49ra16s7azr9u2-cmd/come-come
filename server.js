@@ -50,6 +50,8 @@ const Analysis = z.object({
       remaining_percent: z.number(),
       visible: z.boolean(),
       reference: z.string(),
+      dish_key: z.string(),
+      alternatives: z.array(z.string()),
       ingredients: z.array(
         z.object({
           name: z.string(),

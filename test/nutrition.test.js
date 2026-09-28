@@ -165,9 +165,10 @@ test("料理一覧の材料はすべて成分表にあり、端末内AIの分類
   }
   const { readFile } = await import("node:fs/promises");
   const head = JSON.parse(await readFile(new URL("../public/models/dish-head.json", import.meta.url), "utf8"));
-  assert.deepEqual(head.keys, DISH_KEYS, "料理を増減したら ml/train.mjs で分類ヘッドを作り直す");
-  assert.equal((head.W ?? head.prototypes).length, DISH_KEYS.length);
-  if (head.W) assert.equal(head.b.length, DISH_KEYS.length);
+  // 分類ヘッドが知っている料理は、すべて料理一覧にある必要がある(一覧に料理を追加しただけの段階では、ヘッドの方が少なくてよい)
+  for (const k of head.keys) assert.ok(DISHES[k], `分類ヘッドの料理 ${k} が料理一覧にない。ml/train.mjs で作り直す`);
+  assert.equal((head.W ?? head.prototypes).length, head.keys.length);
+  if (head.W) assert.equal(head.b.length, head.keys.length);
 });
 
 test("端末内AIの確率計算と多数決", async () => {
@@ -196,4 +197,16 @@ test("端末内AIの確率計算と多数決", async () => {
   const lin = { keys: ["a", "b"], W: [[0, 50, 0], [50, 0, 0]], b: [0, 0], textPrototypes: [[1, 0, 0], [0, 1, 0]], nonFood: [[0, 0, 1]] };
   assert.equal(scoreEmbedding([1, 0.2, 0], lin)[0].key, "b", "W の重みで判別する");
   assert.equal(scoreEmbedding([0, 0, 1], lin)[0].key, null);
+});
+
+test("クラウドの解析結果から料理キーと候補を受け取り、知らないキーは捨てる", () => {
+  const a = normalizeAnalysis({
+    dishes: [{ name: "Tacos", dish_key: "tacos_asada", alternatives: ["tacos_pastor", "no_such_dish", "tacos_carnitas", "tostadas"], remaining_percent: 100, ingredients: [] }],
+  });
+  assert.equal(a.dishes[0].dish_key, "tacos_asada");
+  assert.deepEqual(a.dishes[0].alternatives, ["tacos_pastor", "tacos_carnitas"]);
+  const [d] = mergeAnalysis([], { dishes: [{ ...a.dishes[0], id: "", visible: true, confidence: 0.9 }] }, { makeId: () => "c1" });
+  assert.equal(d.dishKey, "tacos_asada");
+  assert.deepEqual(d.candidates, ["tacos_asada", "tacos_pastor", "tacos_carnitas"]);
+  assert.equal(normalizeAnalysis({ dishes: [{ dish_key: "made_up" }] }).dishes[0].dish_key, "");
 });

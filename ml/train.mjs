@@ -60,16 +60,23 @@ async function listImages() {
   return items;
 }
 
-/** ほぼ同じ写真(別サイトの同じ写真、トリミング違いなど)を除く。学習用と評価用に同じ写真が入ると精度が高く出てしまうため */
+/**
+ * ほぼ同じ写真(別サイトの同じ写真、連写、トリミング違いなど)を除く。学習用と評価用に同じ写真が入ると精度が高く出てしまうため。
+ * 同じ写真が別の料理として登録されていた場合は、どちらが正しいか決められないので両方とも除く。
+ */
 function dedupe(items, X) {
   const keep = [];
   const removed = [];
+  const conflicts = new Set();
   for (let i = 0; i < X.length; i++) {
     const dup = keep.find((j) => dot(X[i], X[j]) >= DUP_THRESHOLD);
     if (dup === undefined) keep.push(i);
-    else removed.push([items[i].file, items[dup].file]);
+    else {
+      removed.push([items[i].file, items[dup].file]);
+      if (items[i].key !== items[dup].key) conflicts.add(dup);
+    }
   }
-  return { keep, removed };
+  return { keep: keep.filter((i) => !conflicts.has(i)), removed, conflicts: conflicts.size };
 }
 
 // ---- ベクトル計算 ----
@@ -86,8 +93,18 @@ const dot = (a, b) => {
 };
 const mean = (vs) => vs[0].map((_, i) => vs.reduce((s, v) => s + v[i], 0) / vs.length);
 
-async function embedImages(items) {
-  const cacheFile = path.join(CACHE, `img-${MODEL.replace("/", "_")}-${DTYPE}.json`);
+/** 左右反転した画像(学習用の水増し) */
+function mirror(image) {
+  const { width, height, channels, data } = image;
+  const out = new data.constructor(data.length);
+  for (let yy = 0; yy < height; yy++)
+    for (let xx = 0; xx < width; xx++)
+      for (let c = 0; c < channels; c++) out[(yy * width + xx) * channels + c] = data[(yy * width + (width - 1 - xx)) * channels + c];
+  return new RawImage(out, width, height, channels);
+}
+
+async function embedImages(items, { flip = false } = {}) {
+  const cacheFile = path.join(CACHE, `img-${MODEL.replace("/", "_")}-${DTYPE}${flip ? "-flip" : ""}.json`);
   const cache = existsSync(cacheFile) ? JSON.parse(await readFile(cacheFile, "utf8")) : {};
   const todo = items.filter((it) => !cache[it.file]);
   if (todo.length) {
@@ -95,7 +112,8 @@ async function embedImages(items) {
     const vision = await CLIPVisionModelWithProjection.from_pretrained(MODEL, { dtype: DTYPE });
     let n = 0;
     for (const it of todo) {
-      const image = await RawImage.read(it.file);
+      const raw = await RawImage.read(it.file);
+      const image = flip ? mirror(raw.rgb()) : raw;
       const { image_embeds } = await vision(await processor(image));
       cache[it.file] = Array.from(image_embeds.data);
       if (++n % 100 === 0) console.error(`  embedded ${n}/${todo.length}`);
@@ -237,8 +255,15 @@ function splitFolds(y, k) {
 
 const subset = (arr, idx) => idx.map((i) => arr[i]);
 
+// 学習用の写真の集合を作る。augment があれば、同じ写真の反転版も学習だけに加える(評価には使わない)
+function trainSet(X, y, idx, augment) {
+  const Xs = subset(X, idx), ys = subset(y, idx);
+  if (!augment) return [Xs, ys];
+  return [[...Xs, ...subset(augment, idx)], [...ys, ...ys]];
+}
+
 /** 学習用の写真だけで、内側の交差検証により設定を選ぶ(上位3位以内→1位の順で比較) */
-function selectParam(fit, grid, X, y, evalClasses) {
+function selectParam(fit, grid, X, y, evalClasses, augment = null) {
   if (grid.length === 1) return grid[0];
   const fold = splitFolds(y, INNER);
   let best = null;
@@ -247,7 +272,7 @@ function selectParam(fit, grid, X, y, evalClasses) {
     for (let f = 0; f < INNER; f++) {
       const tr = y.map((_, i) => i).filter((i) => fold[i] !== f);
       const te = y.map((_, i) => i).filter((i) => fold[i] === f);
-      rows.push(...evaluate(fit(subset(X, tr), subset(y, tr), p), subset(X, te), subset(y, te), evalClasses));
+      rows.push(...evaluate(fit(...trainSet(X, y, tr, augment), p), subset(X, te), subset(y, te), evalClasses));
     }
     const s = summarize(rows);
     if (!best || s.top3 > best.s.top3 || (s.top3 === best.s.top3 && s.top1 > best.s.top1)) best = { p, s };
@@ -256,16 +281,16 @@ function selectParam(fit, grid, X, y, evalClasses) {
 }
 
 /** 外側の交差検証。各分割で設定を選び直し、学習に使っていない写真で測る */
-function nestedCV(fit, grid, X, y, evalClasses) {
+function nestedCV(fit, grid, X, y, evalClasses, augment = null) {
   const fold = splitFolds(y, OUTER);
   const rows = [];
   const chosen = [];
   for (let f = 0; f < OUTER; f++) {
     const tr = y.map((_, i) => i).filter((i) => fold[i] !== f);
     const te = y.map((_, i) => i).filter((i) => fold[i] === f);
-    const p = selectParam(fit, grid, subset(X, tr), subset(y, tr), evalClasses);
+    const p = selectParam(fit, grid, subset(X, tr), subset(y, tr), evalClasses, augment && subset(augment, tr));
     chosen.push(p);
-    rows.push(...evaluate(fit(subset(X, tr), subset(y, tr), p), subset(X, te), subset(y, te), evalClasses));
+    rows.push(...evaluate(fit(...trainSet(X, y, tr, augment), p), subset(X, te), subset(y, te), evalClasses));
   }
   return { ...summarize(rows), rows, chosen };
 }
@@ -274,11 +299,12 @@ function nestedCV(fit, grid, X, y, evalClasses) {
 const t0 = Date.now();
 const allItems = await listImages();
 const allX = await embedImages(allItems);
-const { keep, removed } = dedupe(allItems, allX);
+const { keep, removed, conflicts } = dedupe(allItems, allX);
 const items = keep.map((i) => allItems[i]);
 const X = keep.map((i) => allX[i]);
+const Xflip = await embedImages(items, { flip: true });
 const y = items.map((it) => DISH_KEYS.indexOf(it.key));
-console.error(`images: ${items.length} (removed ${removed.length} near-duplicates), model: ${MODEL} (${DTYPE})`);
+console.error(`images: ${items.length} (removed ${removed.length} near-duplicates, ${conflicts} with conflicting labels), model: ${MODEL} (${DTYPE})`);
 
 const promptSets = DISH_KEYS.map(dishPrompts);
 const flat = await embedTexts(promptSets.flat());
@@ -298,11 +324,12 @@ const METHODS = [
   { name: "ゼロショット(説明文のみ、学習なし)", fit: zeroShot(textProtos), grid: [null] },
   { name: "代表ベクトル(写真の平均と説明文を混ぜる)", fit: protoBlend(textProtos), grid: [0, 0.25, 0.5, 0.75] },
   { name: "線形分類器(説明文から学習を始める)", fit: linear(textProtos), grid: [0.1, 0.01, 0.001, 0.0001] },
+  { name: "線形分類器 + 左右反転で水増し", fit: linear(textProtos), grid: [0.1, 0.01, 0.001, 0.0001], augment: true },
 ];
 const results = [];
 for (const m of METHODS) {
   const t = Date.now();
-  const r = nestedCV(m.fit, m.grid, X, y, evalClasses);
+  const r = nestedCV(m.fit, m.grid, X, y, evalClasses, m.augment ? Xflip : null);
   results.push({ ...m, ...r });
   console.error(`${m.name}: top1 ${(r.top1 * 100).toFixed(1)}% top3 ${(r.top3 * 100).toFixed(1)}% (${((Date.now() - t) / 1000).toFixed(0)}s, chosen ${JSON.stringify(r.chosen)})`);
 }
@@ -316,7 +343,7 @@ lines.push(`- モデル: ${MODEL}(${DTYPE}、スマホと同じ量子化)`);
 const bySource = {};
 for (const it of items) bySource[it.source] = (bySource[it.source] ?? 0) + 1;
 lines.push(`- 評価写真: ${best.n} 枚 / ${evalClasses.size} 品目。自由ライセンスの写真を1枚ずつ目視確認したもの(${Object.entries(bySource).map(([k, v]) => `${k} ${v} 枚`).join("、")})`);
-lines.push(`- 重複の除去: 画像ベクトルの類似度 ${DUP_THRESHOLD} 以上の ${removed.length} 枚を同じ写真とみなして除外`);
+lines.push(`- 重複の除去: 画像ベクトルの類似度 ${DUP_THRESHOLD} 以上の ${removed.length} 枚を同じ写真とみなして除外。そのうち別の料理として登録されていた ${conflicts} 組は、正解が決められないため両方とも除外`);
 lines.push(`- 候補: 全 ${C} 品目から選ぶ(写真が${MIN_EVAL}枚未満の ${C - evalClasses.size} 品目は候補には入るが評価しない)`);
 lines.push(`- 評価方法: 入れ子の交差検証(外側 ${OUTER} 分割で測定、設定は学習用写真だけの内側 ${INNER} 分割で選択)`, "");
 lines.push(`| 方式 | 1位正解率 | 上位3位以内(目標 95%) | 上位5位以内 | カロリーのずれ20%以内 | 選ばれた設定 |`, `|---|---|---|---|---|---|`);
@@ -341,9 +368,25 @@ const report = lines.join("\n") + "\n";
 await writeFile(path.join(ROOT, "REPORT.md"), report);
 console.log(report);
 
+// ---- 学習に使った写真の出典(作者・ライセンス・元のページ)を記録する ----
+// 写真そのものは公開しないが、CC BY / CC BY-SA の写真を使っているため、使った写真の一覧と作者を残す
+const credits = [];
+for (const src of SOURCES) {
+  const attrFile = path.join(src.dir, "attribution.json");
+  if (!existsSync(attrFile)) continue;
+  const attr = JSON.parse(await readFile(attrFile, "utf8"));
+  for (const it of items.filter((x) => x.source === src.name)) {
+    const rel = path.relative(src.dir, it.file);
+    const a = attr[rel];
+    if (a) credits.push({ dish: it.key, source: src.name, title: a.title, author: a.artist, license: a.license, page: a.page });
+  }
+}
+await writeFile(path.join(ROOT, "ATTRIBUTION.json"), JSON.stringify(credits, null, 1));
+
 // ---- スマホ用の分類ヘッドを書き出す(全写真で学習。設定は全写真の交差検証で選ぶ) ----
-const finalParam = selectParam(best.fit, best.grid, X, y, evalClasses);
-const head = best.fit(X, y, finalParam);
+const finalAug = best.augment ? Xflip : null;
+const finalParam = selectParam(best.fit, best.grid, X, y, evalClasses, finalAug);
+const head = best.fit(...trainSet(X, y, X.map((_, i) => i), finalAug), finalParam);
 const round = (v) => v.map((x) => Math.round(x * 1e4) / 1e4);
 await mkdir(path.join(ROOT, "..", "public", "models"), { recursive: true });
 await writeFile(

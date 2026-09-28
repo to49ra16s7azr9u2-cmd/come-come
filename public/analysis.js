@@ -1,5 +1,6 @@
 // 画像解析のプロンプトと結果の正規化。サーバー(Claude API)とプレビュー(claude.ai上)で共有する。
 import { foodKeyList } from "./foods.js";
+import { DISHES } from "./dishes.js";
 import { NUTRIENT_KEYS } from "./nutrition.js";
 
 const LANG_NAMES = { es: "Mexican Spanish", en: "English", ja: "Japanese" };
@@ -22,6 +23,7 @@ export const SYSTEM_PROMPT = `You are a registered dietitian watching a live cam
 - reference: which reference object you used for scale (or "estimated" if none).
 - confidence 0–1 for identification and portion size together.
 - eating: whether the person appears to be eating right now.
+- dish_key: the matching key from the dish list below, or "" if none fits. alternatives: up to 2 other dish keys it could plausibly be (the user can switch with one tap).
 
 ## Known dishes from earlier frames
 - If a known dish is visible, reuse its id and only update remaining_percent; ingredients may be an empty array.
@@ -29,13 +31,17 @@ export const SYSTEM_PROMPT = `You are a registered dietitian watching a live cam
 - New dishes get id "".
 
 ## Food key list
-${foodKeyList()}`;
+${foodKeyList()}
+
+## Dish list
+${Object.entries(DISHES).map(([k, d]) => `${k}: ${d.names.en}`).join("\n")}`;
 
 export function outputFormatHint(lang = "es") {
   return `Reply with only this JSON. Write name, serving_description, scene_note and ingredient names in ${LANG_NAMES[lang] ?? "Mexican Spanish"}.
 {"eating": boolean, "scene_note": "one short sentence about the scene",
  "dishes": [{"id": "known id or empty", "name": "dish name", "serving_description": "e.g. 3 tacos",
    "reference": "reference object used", "confidence": 0.0-1.0, "remaining_percent": 0-100, "visible": boolean,
+   "dish_key": "key from the dish list or empty", "alternatives": ["up to 2 dish keys"],
    "ingredients": [{"name": "ingredient", "db_key": "key or empty", "grams": number,
      "dimensions_cm": {"length": number, "width": number, "height": number},
      "per100g": {${NUTRIENT_KEYS.map((k) => `"${k}": number`).join(", ")}}}]}]}`;
@@ -73,6 +79,8 @@ export function normalizeAnalysis(raw) {
         name: str(d.name) || "?",
         serving_description: str(d.serving_description),
         reference: str(d.reference),
+        dish_key: DISHES[d.dish_key] ? d.dish_key : "",
+        alternatives: (Array.isArray(d.alternatives) ? d.alternatives : []).filter((k) => DISHES[k]).slice(0, 2),
         confidence: Math.min(1, Math.max(0, num(d.confidence, 0.5))),
         remaining_percent: num(d.remaining_percent, 100),
         visible: d.visible !== false,

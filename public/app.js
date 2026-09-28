@@ -418,6 +418,7 @@ function activeDishes() {
 function applyAnalysis(analysis) {
   const active = activeDishes();
   const merged = mergeAnalysis(active, analysis, { db: FOOD_DB, meal: active[0]?.meal });
+  for (const d of merged) if (!active.some((a) => a.id === d.id)) d.measured = true; // クラウドは量(g)を測っている
   const others = day.dishes.filter((d) => !day.activeIds.includes(d.id));
   day.dishes = [...others, ...merged];
   day.activeIds = merged.map((d) => d.id);
@@ -792,8 +793,11 @@ function updateDish(id, patch) {
 function replaceDish(id, key) {
   const dish = DISHES[key];
   const lang = getLang();
-  const ingredients = dish.recipe.map((r) => ({ name: foodName(r.db_key, lang), db_key: r.db_key, grams: r.grams }));
   const before = day.dishes.find((d) => d.id === id);
+  // クラウドで量を測った皿は、測った重さを保ったまま料理だけを入れ替える。端末内の皿は標準の1皿にする
+  const measuredGrams = before?.measured ? (before.ingredients ?? []).reduce((s, i) => s + (Number(i.grams) || 0), 0) : 0;
+  const factor = measuredGrams > 0 ? measuredGrams / dishGrams(key) : 1;
+  const ingredients = dish.recipe.map((r) => ({ name: foodName(r.db_key, lang), db_key: r.db_key, grams: r.grams * factor }));
   logCorrection(before?.dishKey ?? null, key);
   updateDish(id, {
     correctedFrom: [...new Set([...(before?.correctedFrom ?? []), before?.dishKey].filter(Boolean))],

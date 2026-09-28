@@ -46,6 +46,26 @@ export const QUERIES = {
   pasta: ["Spaghetti with tomato sauce", "spaghetti tomato sauce"],
   ramen: ["Ramen", "ramen"],
   arroz_blanco: ["Cooked white rice", "bowl of white rice"],
+  chiles_rellenos: ["Chiles rellenos", "chile relleno"],
+  caldo_pollo: ["Caldo de pollo", "caldo de pollo"],
+  birria: ["Birria", "birria"],
+  esquites: ["Esquites", "esquites"],
+  churros: ["Churros", "churros"],
+  hotcakes: ["Pancakes", "pancakes syrup"],
+  pizza: ["Pizza", "pizza slice"],
+  hamburguesa: ["Hamburgers (food)", "hamburger"],
+  hot_dog: ["Hot dogs", "hot dog"],
+  papas_fritas: ["French fries", "french fries"],
+  pollo_frito: ["Fried chicken", "fried chicken"],
+  sushi: ["Sushi", "sushi"],
+  huevos_estrellados: ["Fried eggs", "fried eggs"],
+  sandwich: ["Ham sandwiches", "ham and cheese sandwich"],
+  cereal: ["Breakfast cereals", "bowl of cereal"],
+  cafe: ["Cups of coffee", "cup of coffee"],
+  agua: ["Glasses of water", "glass of water"],
+  pastel: ["Slices of cake", "slice of cake"],
+  helado: ["Ice cream", "ice cream cone"],
+  galletas: ["Cookies", "cookies"],
 };
 
 async function api(params) {
@@ -91,6 +111,7 @@ for (const [key, queries] of Object.entries(QUERIES)) {
       if (picked.size >= PER_CLASS) break;
       try {
         for (const img of await search(q, byCategory)) if (picked.size < PER_CLASS) picked.set(img.title, img);
+        await new Promise((r) => setTimeout(r, 1500)); // 公開APIに負荷をかけないよう間隔をあける
       } catch (e) {
         console.warn(key, q, e.message);
       }

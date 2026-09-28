@@ -229,6 +229,8 @@ export function mergeAnalysis(dishes, analysis, { now = Date.now(), makeId = def
         name: a.name,
         serving_description: a.serving_description,
         reference: a.reference ?? "",
+        dishKey: a.dish_key || undefined,
+        candidates: a.dish_key ? [a.dish_key, ...(a.alternatives ?? [])] : a.alternatives?.length ? [...a.alternatives] : undefined,
         meal: meal ?? mealForTime(new Date(now)),
         source: "camera",
         ingredients: ingredients.map((i) => ({
