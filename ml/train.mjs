@@ -14,6 +14,8 @@
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import { Worker } from "node:worker_threads";
 import { AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, CLIPTextModelWithProjection, RawImage } from "@huggingface/transformers";
 import { DISHES, DISH_KEYS, NON_FOOD_PROMPTS, dishPrompts } from "../public/dishes.js";
 import { FOOD_DB } from "../public/foods.js";
@@ -154,66 +156,49 @@ function protoBlend(textProtos) {
   });
 }
 
-// 多クラスのロジスティック回帰(Adam、全データで勾配)。料理ごとの枚数の偏りは重みで補正する。
-// 重みは説明文のベクトル(×SCALE)から始め、lambda の強さでそこに引き戻す。
-const SCALE = 30;
-function linear(textProtos, { epochs = 250, lr = 0.02 } = {}) {
-  return (X, y, lambda) => {
+// 線形分類器の学習は重いので、CPU のコア数だけ並列に動かす(ml/linear.mjs、ml/linear-worker.mjs)
+const POOL_SIZE = Math.max(1, Math.min(os.availableParallelism?.() ?? os.cpus().length, 8));
+const pool = [];
+const queue = [];
+let jobSeq = 0;
+function runLinear(job) {
+  return new Promise((resolve, reject) => {
+    queue.push({ id: ++jobSeq, job, resolve, reject });
+    pump();
+  });
+}
+function pump() {
+  while (queue.length) {
+    let w = pool.find((x) => !x.busy);
+    if (!w && pool.length < POOL_SIZE) {
+      w = { worker: new Worker(new URL("./linear-worker.mjs", import.meta.url)), busy: false };
+      w.worker.on("message", ({ id, W, b }) => {
+        const task = w.task;
+        w.busy = false;
+        w.task = null;
+        if (task?.id === id) task.resolve({ W, b });
+        pump();
+      });
+      w.worker.on("error", (err) => w.task?.reject(err));
+      pool.push(w);
+    }
+    if (!w) return;
+    const task = queue.shift();
+    w.busy = true;
+    w.task = task;
+    w.worker.postMessage({ id: task.id, job: task.job }, [task.job.X.buffer, task.job.y.buffer, task.job.W0.buffer]);
+  }
+}
+
+function linear(textProtos, opts = {}) {
+  return async (X, y, lambda) => {
     const n = X.length, d = X[0].length;
     const Xf = new Float64Array(n * d);
     X.forEach((v, i) => Xf.set(v, i * d));
     const W0 = new Float64Array(C * d);
     textProtos.forEach((v, c) => W0.set(v, c * d));
-    const W = Float64Array.from(W0);
-    const b = new Float64Array(C);
-    const counts = new Float64Array(C);
-    for (const c of y) counts[c]++;
-    const present = [...counts].filter((k) => k > 0).length;
-    const sw = y.map((c) => n / (present * counts[c]));
-    const totalW = sw.reduce((a, v) => a + v, 0);
-    const mW = new Float64Array(C * d), vW = new Float64Array(C * d), mB = new Float64Array(C), vB = new Float64Array(C);
-    const gW = new Float64Array(C * d), gB = new Float64Array(C), logits = new Float64Array(C);
-    const b1 = 0.9, b2 = 0.999, eps = 1e-8;
-    for (let t = 1; t <= epochs; t++) {
-      gW.fill(0);
-      gB.fill(0);
-      for (let i = 0; i < n; i++) {
-        const xo = i * d;
-        let max = -Infinity;
-        for (let c = 0; c < C; c++) {
-          let s = b[c];
-          const wo = c * d;
-          for (let k = 0; k < d; k++) s += W[wo + k] * Xf[xo + k];
-          logits[c] = SCALE * s;
-          if (logits[c] > max) max = logits[c];
-        }
-        let z = 0;
-        for (let c = 0; c < C; c++) z += (logits[c] = Math.exp(logits[c] - max));
-        const w = sw[i] / totalW;
-        for (let c = 0; c < C; c++) {
-          const g = w * SCALE * (logits[c] / z - (c === y[i] ? 1 : 0));
-          if (g === 0) continue;
-          gB[c] += g;
-          const wo = c * d;
-          for (let k = 0; k < d; k++) gW[wo + k] += g * Xf[xo + k];
-        }
-      }
-      for (let j = 0; j < C * d; j++) {
-        const g = gW[j] + lambda * (W[j] - W0[j]);
-        mW[j] = b1 * mW[j] + (1 - b1) * g;
-        vW[j] = b2 * vW[j] + (1 - b2) * g * g;
-        W[j] -= (lr * (mW[j] / (1 - b1 ** t))) / (Math.sqrt(vW[j] / (1 - b2 ** t)) + eps);
-      }
-      for (let c = 0; c < C; c++) {
-        mB[c] = b1 * mB[c] + (1 - b1) * gB[c];
-        vB[c] = b2 * vB[c] + (1 - b2) * gB[c] * gB[c];
-        b[c] -= (lr * (mB[c] / (1 - b1 ** t))) / (Math.sqrt(vB[c] / (1 - b2 ** t)) + eps);
-      }
-    }
-    return {
-      W: Array.from({ length: C }, (_, c) => Array.from(W.subarray(c * d, (c + 1) * d), (x) => x * SCALE)),
-      b: Array.from(b, (x) => x * SCALE),
-    };
+    const { W, b } = await runLinear({ X: Xf, y: Int32Array.from(y), n, d, C, W0, lambda, ...opts });
+    return { W: Array.from({ length: C }, (_, c) => Array.from(W.subarray(c * d, (c + 1) * d))), b: Array.from(b) };
   };
 }
 
@@ -263,36 +248,40 @@ function trainSet(X, y, idx, augment) {
 }
 
 /** 学習用の写真だけで、内側の交差検証により設定を選ぶ(上位3位以内→1位の順で比較) */
-function selectParam(fit, grid, X, y, evalClasses, augment = null) {
+async function selectParam(fit, grid, X, y, evalClasses, augment = null) {
   if (grid.length === 1) return grid[0];
   const fold = splitFolds(y, INNER);
+  // 設定×分割のすべての学習を同時に投げ、並列に処理させる
+  const scored = await Promise.all(
+    grid.map(async (p) => {
+      const parts = await Promise.all(
+        Array.from({ length: INNER }, async (_, f) => {
+          const tr = y.map((_, i) => i).filter((i) => fold[i] !== f);
+          const te = y.map((_, i) => i).filter((i) => fold[i] === f);
+          return evaluate(await fit(...trainSet(X, y, tr, augment), p), subset(X, te), subset(y, te), evalClasses);
+        }),
+      );
+      return { p, s: summarize(parts.flat()) };
+    }),
+  );
   let best = null;
-  for (const p of grid) {
-    const rows = [];
-    for (let f = 0; f < INNER; f++) {
-      const tr = y.map((_, i) => i).filter((i) => fold[i] !== f);
-      const te = y.map((_, i) => i).filter((i) => fold[i] === f);
-      rows.push(...evaluate(fit(...trainSet(X, y, tr, augment), p), subset(X, te), subset(y, te), evalClasses));
-    }
-    const s = summarize(rows);
-    if (!best || s.top3 > best.s.top3 || (s.top3 === best.s.top3 && s.top1 > best.s.top1)) best = { p, s };
-  }
+  for (const c of scored) if (!best || c.s.top3 > best.s.top3 || (c.s.top3 === best.s.top3 && c.s.top1 > best.s.top1)) best = c;
   return best.p;
 }
 
 /** 外側の交差検証。各分割で設定を選び直し、学習に使っていない写真で測る */
-function nestedCV(fit, grid, X, y, evalClasses, augment = null) {
+async function nestedCV(fit, grid, X, y, evalClasses, augment = null) {
   const fold = splitFolds(y, OUTER);
-  const rows = [];
-  const chosen = [];
-  for (let f = 0; f < OUTER; f++) {
-    const tr = y.map((_, i) => i).filter((i) => fold[i] !== f);
-    const te = y.map((_, i) => i).filter((i) => fold[i] === f);
-    const p = selectParam(fit, grid, subset(X, tr), subset(y, tr), evalClasses, augment && subset(augment, tr));
-    chosen.push(p);
-    rows.push(...evaluate(fit(...trainSet(X, y, tr, augment), p), subset(X, te), subset(y, te), evalClasses));
-  }
-  return { ...summarize(rows), rows, chosen };
+  const outs = await Promise.all(
+    Array.from({ length: OUTER }, async (_, f) => {
+      const tr = y.map((_, i) => i).filter((i) => fold[i] !== f);
+      const te = y.map((_, i) => i).filter((i) => fold[i] === f);
+      const p = await selectParam(fit, grid, subset(X, tr), subset(y, tr), evalClasses, augment && subset(augment, tr));
+      return { p, rows: evaluate(await fit(...trainSet(X, y, tr, augment), p), subset(X, te), subset(y, te), evalClasses) };
+    }),
+  );
+  const rows = outs.flatMap((o) => o.rows);
+  return { ...summarize(rows), rows, chosen: outs.map((o) => o.p) };
 }
 
 // ---- 実行 ----
@@ -323,13 +312,13 @@ const evalClasses = new Set(Object.entries(counts).filter(([, n]) => n >= MIN_EV
 const METHODS = [
   { name: "ゼロショット(説明文のみ、学習なし)", fit: zeroShot(textProtos), grid: [null] },
   { name: "代表ベクトル(写真の平均と説明文を混ぜる)", fit: protoBlend(textProtos), grid: [0, 0.25, 0.5, 0.75] },
-  { name: "線形分類器(説明文から学習を始める)", fit: linear(textProtos), grid: [0.1, 0.01, 0.001, 0.0001] },
-  { name: "線形分類器 + 左右反転で水増し", fit: linear(textProtos), grid: [0.1, 0.01, 0.001, 0.0001], augment: true },
+  { name: "線形分類器(説明文から学習を始める)", fit: linear(textProtos), grid: [0.3, 0.1, 0.03, 0.01] },
+  { name: "線形分類器 + 左右反転で水増し", fit: linear(textProtos), grid: [0.3, 0.1, 0.03, 0.01], augment: true },
 ];
 const results = [];
 for (const m of METHODS) {
   const t = Date.now();
-  const r = nestedCV(m.fit, m.grid, X, y, evalClasses, m.augment ? Xflip : null);
+  const r = await nestedCV(m.fit, m.grid, X, y, evalClasses, m.augment ? Xflip : null);
   results.push({ ...m, ...r });
   console.error(`${m.name}: top1 ${(r.top1 * 100).toFixed(1)}% top3 ${(r.top3 * 100).toFixed(1)}% (${((Date.now() - t) / 1000).toFixed(0)}s, chosen ${JSON.stringify(r.chosen)})`);
 }
@@ -385,8 +374,8 @@ await writeFile(path.join(ROOT, "ATTRIBUTION.json"), JSON.stringify(credits, nul
 
 // ---- スマホ用の分類ヘッドを書き出す(全写真で学習。設定は全写真の交差検証で選ぶ) ----
 const finalAug = best.augment ? Xflip : null;
-const finalParam = selectParam(best.fit, best.grid, X, y, evalClasses, finalAug);
-const head = best.fit(...trainSet(X, y, X.map((_, i) => i), finalAug), finalParam);
+const finalParam = await selectParam(best.fit, best.grid, X, y, evalClasses, finalAug);
+const head = await best.fit(...trainSet(X, y, X.map((_, i) => i), finalAug), finalParam);
 const round = (v) => v.map((x) => Math.round(x * 1e4) / 1e4);
 await mkdir(path.join(ROOT, "..", "public", "models"), { recursive: true });
 await writeFile(
@@ -404,4 +393,5 @@ await writeFile(
     eval: { top1: best.top1, top3: best.top3, top5: best.top5, n: best.n },
   }),
 );
+for (const w of pool) w.worker.terminate();
 console.error(`wrote public/models/dish-head.json (${best.name}, param ${finalParam}) in ${((Date.now() - t0) / 1000).toFixed(0)}s`);

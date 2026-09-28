@@ -277,3 +277,18 @@ test("チェーン店の公式値でも、つじつまの合わない値は除�
   assert.equal(CHAINS.carls.items.length, 29);
   assert.ok(CHAIN_ISSUES.every((i) => i.chain === "kfc"));
 });
+
+test("線形分類器の学習は、分けられるデータを正しく分ける", async () => {
+  const { fitLinear } = await import("../ml/linear.mjs");
+  // 2次元・2料理。料理0は x 軸寄り、料理1は y 軸寄り。説明文のベクトルはわざと逆向きから始める
+  const pts = [[1, 0.1], [0.9, 0.2], [0.95, 0], [0.1, 1], [0.2, 0.9], [0, 0.95]];
+  const X = Float64Array.from(pts.flat());
+  const y = Int32Array.from([0, 0, 0, 1, 1, 1]);
+  const W0 = Float64Array.from([0, 1, 1, 0]);
+  const { W, b } = fitLinear({ X, y, n: 6, d: 2, C: 2, W0, lambda: 0.001, epochs: 300 });
+  for (let i = 0; i < 6; i++) {
+    const s0 = W[0] * pts[i][0] + W[1] * pts[i][1] + b[0];
+    const s1 = W[2] * pts[i][0] + W[3] * pts[i][1] + b[1];
+    assert.equal(s0 > s1 ? 0 : 1, y[i], `point ${i}`);
+  }
+});
