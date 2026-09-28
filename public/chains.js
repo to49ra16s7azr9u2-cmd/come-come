@@ -195,7 +195,135 @@ export const CHAINS = {
       ["Chocolate Chip Cookie", "Bebida y postre", 71, 370, 19, 350, 48, 2, 3],
     ],
   },
+  kfc: {
+    name: "KFC",
+    source: "https://kfc.com.mx/es/tabla-nutricional (Nutrimentales 2026 V5, imágenes transcritas 2026-09)",
+    official: true,
+    // 公式の表のうち、つじつまの合わない値を validateChainRow で自動的に除外・不明扱いにする(下の説明を参照)
+    needsValidation: true,
+    items: [
+      ["Pieza Crujipollo", "Pollo", null, 190.6, 25.4, 4282.4, 49.1, null, 16.7, {"serving": "1 pieza", "kcal_per_100g": 153.96}],
+      ["Pieza Receta Secreta", "Pollo", null, 153.81, 16, 3525.6, 35.1, null, 13.4, {"serving": "1 pieza", "kcal_per_100g": 151.46}],
+      ["Pieza Hot Cruji", "Pollo", null, 190.6, 25.4, 4282.6, 49.8, null, 16.9, {"serving": "1 pieza", "kcal_per_100g": 151.63}],
+      ["Pieza Spicy BBQ", "Pollo", null, 220.67, 25.6, 4803.4, 55.4, null, 17.9, {"serving": "1 pieza", "kcal_per_100g": 158.53}],
+      ["Pieza Jalapeño", "Pollo", null, 195.69, 25.4, 4508.7, 49.5, null, 17.4, {"serving": "1 pieza", "kcal_per_100g": 149.96}],
+      ["Pieza Mango furioso", "Pollo", null, 268.34, 25.4, 4612.4, 69, null, 16.7, {"serving": "1 pieza", "kcal_per_100g": 158.78}],
+      ["Ke-Tira Cruji", "Pollo", null, 165.02, 9.6, 3866.4, 7.2, null, 12.9, {"serving": "1 tira", "kcal_per_100g": 256.5}],
+      ["Ke-Tira Jalapeño", "Pollo", null, 168.29, 9.6, 4011.6, 7.4, null, 13.4, {"serving": "1 tira", "kcal_per_100g": 245.2}],
+      ["Ke-Tira Hot Cruji", "Pollo", null, 165.02, 9.6, 3866.6, 7.7, null, 13.1, {"serving": "1 tira", "kcal_per_100g": 251.04}],
+      ["Ke-Tira Spicy BBQ", "Pollo", null, 180.64, 9.7, 4137.1, 10.4, null, 13.5, {"serving": "1 tira", "kcal_per_100g": 249.73}],
+      ["Ke-Tira Buffalo Hot", "Pollo", null, 207.07, 9.6, 4202.1, 7.8, null, 12.9, {"serving": "1 tira", "kcal_per_100g": 265.37}],
+      ["Ke-Tira Mango furioso", "Pollo", null, 211.8, 9.6, 4065, 19.1, null, 12.9, {"serving": "1 tira", "kcal_per_100g": 231.39}],
+      ["Big Krunch", "Burger", null, 797.74, 39.4, 9782.6, 79.5, null, 35.2, {"serving": "1 burger", "kcal_per_100g": 276.02}],
+      ["Kruncher", "Burger", null, 660.99, 30.1, 11689.9, 63.9, null, 34.9, {"serving": "1 burger", "kcal_per_100g": 230.36}],
+      ["Ke-Tiras Burger", "Burger", null, 498.26, 24.9, 9791.6, 51.4, null, 32.1, {"serving": "1 burger", "kcal_per_100g": 232.4}],
+      ["Ke-Tiras Burger BBQ", "Burger", null, 490.65, 21.6, 9831.8, 44, null, 33.4, {"serving": "1 burger", "kcal_per_100g": 239.07}],
+      ["Ke-Tiras Burger Jalapeño", "Burger", null, 465.94, 21.4, 9581, 38.1, null, 33.1, {"serving": "1 burger", "kcal_per_100g": 235.52}],
+      ["Ke-Tiras Burger Buffalo", "Burger", null, 543.52, 19, 9961.8, 38.9, null, 32.2, {"serving": "1 burger", "kcal_per_100g": 250.89}],
+      ["Ke-Tiras Burger Hot Cruji", "Burger", null, 505.07, 25.3, 9925.8, 53.1, null, 32.8, {"serving": "1 burger", "kcal_per_100g": 232.4}],
+      ["Ke-Tiras Burger Mango furioso", "Burger", null, 569.35, 24, 10667.6, 55.8, null, 36.2, {"serving": "1 burger", "kcal_per_100g": 233.82}],
+      ["La Secreta Burger", "Burger", null, 642.23, 24.6, 21292.1, 81.8, null, 45.9, {"serving": "1 burger", "kcal_per_100g": 253.41}],
+      ["Puré con Gravy mediano", "Complemento", null, 64.16, 5.5, 4995.1, 17.8, null, 2, {"serving": "mediano", "kcal_per_100g": 43.23}],
+      ["Puré con Gravy grande", "Complemento", null, 137.93, 11.5, 10516.8, 38, null, 4.2, {"serving": "grande", "kcal_per_100g": 44.13}],
+      ["Puré con Gravy familiar", "Complemento", null, 271.2, 24.5, 22270.6, 76.2, null, 8.6, {"serving": "familiar", "kcal_per_100g": 41.01}],
+      ["Puré solo mediano", "Complemento", null, 58.31, 4, 3805.4, 15.5, null, 1.7, {"serving": "mediano", "kcal_per_100g": 51.47}],
+      ["Puré solo grande", "Complemento", null, 126.98, 8.8, 8286, 33.7, null, 3.6, {"serving": "grande", "kcal_per_100g": 51.47}],
+      ["Puré solo familiar", "Complemento", null, 238.16, 16.5, 15541, 63.2, null, 6.8, {"serving": "familiar", "kcal_per_100g": 51.47}],
+      ["Ensalada mediana", "Complemento", null, 28.45, 5.7, 1745.7, 6.5, null, 1.2, {"serving": "mediana", "kcal_per_100g": 29.82}],
+      ["Ensalada grande", "Complemento", null, 56.96, 11.4, 3495.1, 13, null, 2.4, {"serving": "grande", "kcal_per_100g": 29.82}],
+      ["Ensalada familiar", "Complemento", null, 107.77, 21.6, 6613.3, 24.6, null, 4.6, {"serving": "familiar", "kcal_per_100g": 29.82}],
+      ["Mac & cheese mediano", "Complemento", null, 417.72, 7.4, 4738.7, 92.2, null, 16.3, {"serving": "mediano", "kcal_per_100g": 316.84}],
+      ["Mac & cheese grande", "Complemento", null, 894, 15.9, 10141.6, 197.3, null, 35, {"serving": "grande", "kcal_per_100g": 316.84}],
+      ["Mac & cheese familiar", "Complemento", null, 1705.49, 30.4, 19347.2, 376.5, null, 66.7, {"serving": "familiar", "kcal_per_100g": 316.84}],
+      ["Bisquet tradicional", "Complemento", null, 145.76, 2.4, 1517.7, 27.8, null, 5.9, {"serving": "1 pieza", "kcal_per_100g": 297.07}],
+      ["Papas chicas", "Complemento", null, 289.96, 13.9, 523.3, 35.1, null, 7.5, {"serving": "chicas", "kcal_per_100g": 284.27}],
+      ["Papas medianas", "Complemento", null, 352.49, 17, 636.2, 42.7, null, 9.1, {"serving": "medianas", "kcal_per_100g": 284.27}],
+      ["Papas grandes", "Complemento", null, 619.71, 29.8, 1118.5, 75.1, null, 16, {"serving": "grandes", "kcal_per_100g": 284.27}],
+      ["Papas familiares", "Complemento", null, 525.9, 25.3, 949.2, 63.7, null, 13.5, {"serving": "familiares", "kcal_per_100g": 284.27}],
+      ["Popcorn medianas", "Complemento", null, 150.37, 9.5, 3216.2, 23.3, null, 18.7, {"serving": "medianas", "kcal_per_100g": 176.91}],
+      ["Popcorn grandes", "Complemento", null, 297.52, 18.8, 6363.5, 46.2, null, 37, {"serving": "grandes", "kcal_per_100g": 176.91}],
+      ["Pay de manzana", "Postre", null, 188.52, 3.5, 2600.2, 35.3, null, 4.3, {"serving": "1 pieza", "kcal_per_100g": 270.35}],
+      ["Cono vainilla sencillo", "Postre", null, 173.58, 5.5, 277.1, 26.8, null, 4.2, {"serving": "sencillo", "kcal_per_100g": 197.25}],
+      ["Cono vainilla doble", "Postre", null, 205.36, 6.9, 343.2, 30.9, null, 5.1, {"serving": "doble", "kcal_per_100g": 190.15}],
+      ["Cono Hershey's sencillo", "Postre", null, 170.78, 5.3, 258.9, 26.1, null, 4.4, {"serving": "sencillo", "kcal_per_100g": 194.07}],
+      ["Cono Hershey's doble", "Postre", null, 202.56, 6.6, 325, 30.2, null, 5.2, {"serving": "doble", "kcal_per_100g": 187.55}],
+      ["Sundae", "Postre", null, 193.69, 8.2, 403.4, 24.9, null, 5.3, {"serving": "1 sundae", "kcal_per_100g": 158.89}],
+      ["Sundae con fresa", "Postre", null, 243.79, 8.2, 424.4, 37.4, null, 5.3, {"serving": "1 sundae", "kcal_per_100g": 160.49}],
+      ["Sundae con caramelo", "Postre", null, 294.84, 9.8, 444.5, 46.3, null, 5.7, {"serving": "1 sundae", "kcal_per_100g": 189.12}],
+      ["Sundae con chocolate", "Postre", null, 317.67, 8.7, 421.6, 54, null, 6.1, {"serving": "1 sundae", "kcal_per_100g": 199.67}],
+      ["Big Kream chico", "Postre", null, 140.94, 6, 293.5, 18.1, null, 3.9, {"serving": "chico", "kcal_per_100g": 158.89}],
+      ["Big Kream mediano", "Postre", null, 473.65, 20.1, 986.4, 60.8, null, 13, {"serving": "mediano", "kcal_per_100g": 158.89}],
+      ["Big Kream familiar", "Postre", null, 836.56, 35.4, 1742.1, 107.4, null, 23, {"serving": "familiar", "kcal_per_100g": 158.89}],
+      ["Big Kream Oreo chico", "Postre", null, 208.41, 8.2, 379.8, 28.9, null, 5, {"serving": "chico", "kcal_per_100g": 199.81}],
+      ["Big Kream Oreo mediano", "Postre", null, 608.59, 24.5, 1158.9, 82.4, null, 15.2, {"serving": "mediano", "kcal_per_100g": 184.81}],
+      ["Big Kream Oreo familiar", "Postre", null, 1038.53, 42, 2000.4, 139.8, null, 26.3, {"serving": "familiar", "kcal_per_100g": 181.18}],
+      ["Big Kream Canelitas 8 oz", "Postre", null, 179.39, 6.6, 343, 37.3, null, 4.8, {"serving": "8 oz", "kcal_per_100g": 154.38}],
+      ["Big Kream Canelitas 16 oz", "Postre", null, 533.42, 21, 1077.8, 95.4, null, 14.9, {"serving": "16 oz", "kcal_per_100g": 153.68}],
+      ["Big Kream Canelitas 34 oz", "Postre", null, 903.31, 36.5, 1870.4, 154.6, null, 25.8, {"serving": "34 oz", "kcal_per_100g": 152.46}],
+      ["Big Kream Froot Loops 8 oz", "Postre", null, 185.89, 6.1, 318.9, 28.8, null, 4.1, {"serving": "8 oz", "kcal_per_100g": 171.01}],
+      ["Big Kream Froot Loops 16 oz", "Postre", null, 563.55, 20.3, 1037.3, 82.2, null, 13.5, {"serving": "16 oz", "kcal_per_100g": 166.68}],
+      ["Big Kream Froot Loops 34 oz", "Postre", null, 971.41, 35.9, 1818.5, 139.4, null, 23.7, {"serving": "34 oz", "kcal_per_100g": 165.63}],
+      ["Refresco Fanta / Fuze Tea 473 ml", "Bebida", null, 68.42, 0, 71.4, 17.1, null, 0, {"serving": "473 ml"}],
+      ["Refresco Fanta / Fuze Tea 621 ml", "Bebida", null, 117.41, 0, 122.5, 29.4, null, 0, {"serving": "621 ml"}],
+      ["Refresco Fanta / Fuze Tea 887 ml", "Bebida", null, 121.55, 0, 126.9, 30.4, null, 0, {"serving": "887 ml"}],
+      ["Coca-Cola regular 473 ml", "Bebida", null, 485.1, 0, 38, 28.5, null, 0, {"serving": "473 ml"}],
+      ["Coca-Cola regular 621 ml", "Bebida", null, 671.96, 0, 52.7, 39.5, null, 0, {"serving": "621 ml"}],
+      ["Coca-Cola regular 887 ml", "Bebida", null, 748.16, 0, 58.7, 44, null, 0, {"serving": "887 ml"}],
+      ["Coca-Cola light / sin azúcar / Sidral / Sprite 473 ml", "Bebida", null, 97.35, 0, 89.4, 5.7, null, 0, {"serving": "473 ml"}],
+      ["Coca-Cola light / sin azúcar / Sidral / Sprite 621 ml", "Bebida", null, 109.06, 0, 100.2, 6.4, null, 0, {"serving": "621 ml"}],
+      ["Coca-Cola light / sin azúcar / Sidral / Sprite 887 ml", "Bebida", null, 119.18, 0, 109.4, 7, null, 0, {"serving": "887 ml"}],
+      ["Salsa Spicy BBQ (shot 3 oz)", "Salsa", null, 166.4, 1, 2882.1, 34.6, null, 6.4, {"serving": "shot 3 oz", "kcal_per_100g": 195.3}],
+      ["Salsa Jalapeño (shot 3 oz)", "Salsa", null, 64.8, 0.1, 2877.2, 5.1, null, 8.7, {"serving": "shot 3 oz", "kcal_per_100g": 76.06}],
+      ["Salsa Buffalo (shot 3 oz)", "Salsa", null, 307.61, 0, 2454.9, 5, null, 0, {"serving": "shot 3 oz", "kcal_per_100g": 307.0}],
+      ["Salsa Original (shot 3 oz)", "Salsa", null, 420, 34.7, 934.5, 25.2, null, 1.1, {"serving": "shot 3 oz", "kcal_per_100g": 400.0}],
+      ["Salsa Mango furioso (shot 3 oz)", "Salsa", null, 188, 0, 797.9, 48.1, null, 0, {"serving": "shot 3 oz", "kcal_per_100g": 172.0}],
+      ["Salsa Tamarindo bravo (shot 3 oz)", "Salsa", null, 141.24, 0, 632.4, 35.3, null, 0, {"serving": "shot 3 oz", "kcal_per_100g": 132.0}],
+      ["Salsa Ranch (shot 3 oz)", "Salsa", null, 226.72, 22.9, 580.3, 4.2, null, 1, {"serving": "shot 3 oz", "kcal_per_100g": 218.0}],
+      ["Catsup (sobre)", "Salsa", null, 10.08, 0, 66.7, 2.4, null, 0.1, {"serving": "1 sobre", "kcal_per_100g": 112.0}],
+      ["Salsa Jalapeño (sobre)", "Salsa", null, 9.22, 0, 243.1, 0.5, null, 0, {"serving": "1 sobre", "kcal_per_100g": 102.4}],
+      ["Mermelada (sobre)", "Salsa", null, 64.53, 0, 0.4, 3.8, null, 0, {"serving": "1 sobre", "kcal_per_100g": 717.0}],
+    ],
+  },
 };
+
+/**
+ * 公式の値でも、明らかにつじつまが合わないものはそのまま使わない(公開されている表の誤記への対策)。
+ * - エネルギーが、脂質・炭水化物・たんぱく質から計算した値(9・4・4 kcal/g)と ±20% 以上ずれる
+ *   (小さい品目は ±25 kcal まで許す) → 品目ごと除外
+ * - ナトリウムが 1品で 3,000 mg を超える、または 100 g あたり 1,500 mg(ソース類は 4,000 mg)を超える
+ *   → ナトリウムだけ「不明」にして、ほかの値は使う
+ * g が公開されていなくても、1品と100gあたりのエネルギーが両方あれば g を計算する(飲み物は ml 表記を使う)。
+ * 返り値: { row: 使える行 | null, issues: [理由] }
+ */
+export function validateChainRow(row) {
+  const [name, category, grams, kcal, fat, sodiumMg, carbs, fiber, protein, extra = {}] = row;
+  const issues = [];
+  const atwater = fat * 9 + carbs * 4 + protein * 4;
+  if (Math.abs(kcal - atwater) > Math.max(25, 0.2 * Math.max(kcal, atwater))) {
+    return { row: null, issues: [`kcal ${kcal} ≠ grasa/carbohidratos/proteína ${Math.round(atwater)} kcal`] };
+  }
+  let g = grams;
+  if (!g && extra.kcal_per_100g && category !== "Bebida") g = Math.round((kcal / extra.kcal_per_100g) * 100);
+  let sodium = sodiumMg;
+  const limit100 = category === "Salsa" ? 4000 : 1500;
+  if (sodium !== null && (sodium > 3000 || (g && (sodium / g) * 100 > limit100))) {
+    issues.push(`sodio ${sodium} mg${g ? ` (${Math.round((sodium / g) * 100)} mg/100 g)` : ""} → desconocido`);
+    sodium = null;
+  }
+  return { row: [name, category, g ?? null, kcal, fat, sodium, carbs, fiber, protein, extra], issues };
+}
+
+/** 検査で除外・修正した品目(どの値をなぜ使わなかったかの記録) */
+export const CHAIN_ISSUES = [];
+for (const [key, chain] of Object.entries(CHAINS)) {
+  chain.items = chain.items
+    .map((row) => {
+      const { row: ok, issues } = validateChainRow(row);
+      if (issues.length) CHAIN_ISSUES.push({ chain: key, item: row[0], excluded: !ok, issues });
+      return ok;
+    })
+    .filter(Boolean);
+}
 
 /** チェーン店のメニュー1品の栄養素(1食分)。公式の表にない栄養素は null(不明) */
 export function chainItemNutrients(row) {
@@ -207,7 +335,7 @@ export function chainItemNutrients(row) {
     fat_g: fat,
     carbs_g: carbs,
     fiber_g: fiber,
-    salt_g: Math.round(((sodiumMg * 2.54) / 1000) * 100) / 100, // ナトリウム(mg) × 2.54 ÷ 1000 = 食塩相当量(g)
+    salt_g: sodiumMg === null ? null : Math.round(((sodiumMg * 2.54) / 1000) * 100) / 100, // ナトリウム(mg) × 2.54 ÷ 1000 = 食塩相当量(g)
     calcium_mg: known("calcium_mg"),
     iron_mg: known("iron_mg"),
     vitamin_a_ug: known("vitamin_a_ug"),
@@ -234,3 +362,4 @@ export function searchChainItems(query, limit = 20) {
   // 検索語に近い(名前が短い)ものを先に出す
   return out.sort((a, b) => a.name.length - b.name.length).slice(0, limit);
 }
+

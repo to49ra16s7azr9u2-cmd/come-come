@@ -245,7 +245,8 @@ test("チェーン店のメニューを検索でき、公式にない栄養素�
   for (const chain of Object.values(CHAINS)) for (const row of chain.items) {
     assert.ok(row.length === 9 || row.length === 10, row[0]);
     assert.ok(row[2] > 0 || row[9]?.serving, `${row[0]}: g か量の表記が必要`);
-    for (const v of row.slice(3, 9)) assert.ok(typeof v === "number" && v >= 0, row[0]);
+    for (const v of row.slice(3, 9)) assert.ok(v === null || (typeof v === "number" && v >= 0), row[0]);
+    assert.ok(typeof row[3] === "number", "エネルギーは必ずある");
   }
   const [dona] = searchChainItems("dunkin boston kreme");
   assert.equal(dona.serving, "1 dona");
@@ -256,4 +257,23 @@ test("チェーン店のメニューを検索でき、公式にない栄養素�
   assert.ok(unknownNutrients([eaten]).has("calcium_mg"));
   assert.ok(!unknownNutrients([eaten]).has("energy_kcal"));
   assert.ok(!unknownNutrients([{ ...eaten, remaining_percent: 100 }]).has("calcium_mg"), "食べていなければ関係ない");
+});
+
+test("チェーン店の公式値でも、つじつまの合わない値は除外・不明にする", async () => {
+  const { validateChainRow, CHAINS, CHAIN_ISSUES } = await import("../public/chains.js");
+  // エネルギーが三大栄養素と合わない → 品目ごと除外
+  assert.equal(validateChainRow(["x", "Pollo", null, 190, 25.4, 400, 49.1, null, 16.7, {}]).row, null);
+  // エネルギーは合うがナトリウムがありえない → ナトリウムだけ不明
+  const r = validateChainRow(["Ke-Tira", "Pollo", null, 165, 9.6, 3866, 7.2, null, 12.9, { kcal_per_100g: 256.5 }]);
+  assert.equal(r.row[2], 64, "1品と100gのエネルギーから g を計算");
+  assert.equal(r.row[5], null);
+  // ソース類は 100 g あたりの上限をゆるめる
+  assert.equal(validateChainRow(["Salsa", "Salsa", 85, 166, 1, 2882, 34.6, null, 6.4, {}]).row[5], 2882);
+  // 飲み物は ml 表記なので g を計算しない
+  assert.equal(validateChainRow(["Fanta", "Bebida", null, 68.4, 0, 71, 17.1, null, 0, { kcal_per_100g: 21.8 }]).row[2], null);
+  // 公式の表で問題のないチェーンはすべて残る
+  assert.equal(CHAINS.subway.items.length, 54);
+  assert.equal(CHAINS.dunkin.items.length, 86);
+  assert.equal(CHAINS.carls.items.length, 29);
+  assert.ok(CHAIN_ISSUES.every((i) => i.chain === "kfc"));
 });
