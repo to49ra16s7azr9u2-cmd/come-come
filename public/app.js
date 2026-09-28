@@ -864,7 +864,7 @@ function renderSearch() {
     key: c.key,
     name: `${c.chain} · ${c.name}`,
     grams: c.grams,
-    detail: `${Math.round(c.nutrients.energy_kcal)} kcal · ${c.grams} g · ${t(c.official ? "chain.official" : "chain.estimated")}`,
+    detail: `${Math.round(c.nutrients.energy_kcal)} kcal · ${c.grams ? `${c.grams} g` : c.serving} · ${t(c.official ? "chain.official" : "chain.estimated")}`,
   }));
   const foods = searchFoods(q, lang, 20).map((f) => ({
     type: "food",
@@ -936,12 +936,14 @@ function addChainItem(key, grams, meal) {
   const chain = CHAINS[chainKey];
   const row = chain.items[Number(i)];
   const [c] = searchChainItems(`${chain.name} ${row[0]}`, 50).filter((x) => x.key === key);
-  const factor = grams > 0 ? grams / row[2] : 1;
+  // g が公開されていない品目(「1 dona」など)は量を変えられないので、1食分として記録する
+  const factor = grams > 0 && row[2] ? grams / row[2] : 1;
+  const servingText = row[2] ? `${Math.round(row[2] * factor)} g` : c.serving;
   const nutrients = Object.fromEntries(Object.entries(c.nutrients).map(([k, v]) => [k, v === null ? null : v * factor]));
   const dish = manualDish({ key: null, name: `${chain.name} · ${row[0]}`, grams: 0, meal, db: FOOD_DB });
   dish.portion_nutrients = nutrients;
-  dish.ingredients = [{ name: `${chain.name} · ${row[0]}`, db_key: "", grams: row[2] * factor, source: chain.source }];
-  dish.serving_description = `${Math.round(row[2] * factor)} g · ${t(chain.official ? "chain.official" : "chain.estimated")}`;
+  dish.ingredients = [{ name: `${chain.name} · ${row[0]}`, db_key: "", grams: row[2] ? row[2] * factor : 0, source: chain.source }];
+  dish.serving_description = `${servingText} · ${t(chain.official ? "chain.official" : "chain.estimated")}`;
   dish.chainKey = key;
   clearSample();
   day.dishes.push(dish);

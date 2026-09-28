@@ -2,7 +2,8 @@
 // 値は各社が公開している表から写したもの(出典と日付を source に記録)。
 // 公式の表にない栄養素(ビタミン・ミネラルなど)は「不明」として扱い、0 とはみなさない。
 //
-// items の行: [メニュー名, 分類, 1食のg, kcal, 脂質g, ナトリウムmg, 炭水化物g, 食物繊維g, たんぱく質g]
+// items の行: [メニュー名, 分類, 1食のg(公開されていなければ null), kcal, 脂質g, ナトリウムmg, 炭水化物g, 食物繊維g, たんぱく質g, 追加情報?]
+// 追加情報: { serving: "1 dona" など g の代わりの量の表記, 公開されているビタミン・ミネラル(calcium_mg など) }
 export const CHAINS = {
   subway: {
     name: "Subway",
@@ -65,11 +66,105 @@ export const CHAINS = {
       ["Boneless Bites (salsa BBQ)", "Guarnición", 190, 360, 18, 2100, 24, 4, 25],
     ],
   },
+  dunkin: {
+    name: "Dunkin'",
+    source: "https://dunkin.mx/nutricional.aspx (tabla nutricional, PDF vigente al 2026-09)",
+    official: true,
+    items: [
+      ["Glazed Donut", "Dona", null, 240, 11, 270, 33, 1, 4, { serving: "1 dona", vitamin_d_ug: 0, calcium_mg: 12, iron_mg: 2 }],
+      ["Double Chocolate", "Dona", null, 380, 23, 430, 41, 1, 4, { serving: "1 dona", vitamin_d_ug: 0, calcium_mg: 26, iron_mg: 1 }],
+      ["Peanut", "Dona", null, 470, 27, 320, 50, 2, 8, { serving: "1 dona", vitamin_d_ug: 0, calcium_mg: 33, iron_mg: 2 }],
+      ["Maple Frosted", "Dona", null, 260, 11, 280, 35, 1, 4, { serving: "1 dona", vitamin_d_ug: 0, calcium_mg: 12, iron_mg: 2 }],
+      ["Old Fashioned", "Dona", null, 310, 19, 320, 30, 1, 4, { serving: "1 dona", vitamin_d_ug: 0, calcium_mg: 24, iron_mg: 2 }],
+      ["French Cruller", "Dona", null, 230, 14, 135, 21, 0, 3, { serving: "1 dona", vitamin_d_ug: 0, calcium_mg: 12, iron_mg: 0 }],
+      ["Vanilla Frosted", "Dona", null, 260, 11, 280, 34, 1, 4, { serving: "1 dona", vitamin_d_ug: 0, calcium_mg: 12, iron_mg: 2 }],
+      ["Boston Kreme", "Dona", null, 270, 11, 320, 39, 1, 5, { serving: "1 dona", vitamin_d_ug: 1, calcium_mg: 33, iron_mg: 2 }],
+      ["Chocolate Crème", "Dona", null, 290, 14, 300, 36, 1, 5, { serving: "1 dona", vitamin_d_ug: 1, calcium_mg: 14, iron_mg: 2 }],
+      ["Americano Original Blend chico", "Bebida caliente", null, 5, 0, 15, 1, 0, 0, { serving: "small", vitamin_d_ug: 0, calcium_mg: 7, iron_mg: 0 }],
+      ["Americano Original Blend mediano", "Bebida caliente", null, 10, 0, 25, 2, 0, 0, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 12, iron_mg: 0 }],
+      ["Americano Original Blend grande", "Bebida caliente", null, 10, 0, 30, 2, 0, 0, { serving: "large", vitamin_d_ug: 0, calcium_mg: 15, iron_mg: 0 }],
+      ["Latte chico", "Bebida caliente", null, 120, 6, 85, 9, 0, 6, { serving: "small", vitamin_d_ug: 2, calcium_mg: 208, iron_mg: 0 }],
+      ["Latte mediano", "Bebida caliente", null, 170, 9, 125, 14, 0, 9, { serving: "medium", vitamin_d_ug: 4, calcium_mg: 311, iron_mg: 0 }],
+      ["Latte grande", "Bebida caliente", null, 230, 12, 170, 19, 0, 12, { serving: "large", vitamin_d_ug: 5, calcium_mg: 415, iron_mg: 0 }],
+      ["Chai Latte chico", "Bebida caliente", null, 150, 0, 100, 29, 1, 7, { serving: "small", vitamin_d_ug: 2, calcium_mg: 225, iron_mg: 0 }],
+      ["Chai Latte mediano", "Bebida caliente", null, 220, 0, 150, 44, 2, 10, { serving: "medium", vitamin_d_ug: 3, calcium_mg: 338, iron_mg: 0 }],
+      ["Chai Latte grande", "Bebida caliente", null, 290, 0.5, 200, 58, 2, 13, { serving: "large", vitamin_d_ug: 4, calcium_mg: 450, iron_mg: 1 }],
+      ["Cappuccino chico", "Bebida caliente", null, 45, 0, 55, 7, 0, 4, { serving: "small", vitamin_d_ug: 1, calcium_mg: 150, iron_mg: 0 }],
+      ["Cappuccino mediano", "Bebida caliente", null, 70, 0, 85, 10, 0, 6, { serving: "medium", vitamin_d_ug: 2, calcium_mg: 225, iron_mg: 0 }],
+      ["Cappuccino grande", "Bebida caliente", null, 90, 0, 115, 13, 0, 8, { serving: "large", vitamin_d_ug: 3, calcium_mg: 300, iron_mg: 0 }],
+      ["Mocha chico", "Bebida caliente", null, 110, 0, 20, 25, 1, 1, { serving: "small", vitamin_d_ug: 0, calcium_mg: 11, iron_mg: 1 }],
+      ["Mocha mediano", "Bebida caliente", null, 160, 0.5, 30, 38, 2, 2, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 16, iron_mg: 1 }],
+      ["Mocha grande", "Bebida caliente", null, 210, 1, 40, 50, 2, 2, { serving: "large", vitamin_d_ug: 0, calcium_mg: 20, iron_mg: 2 }],
+      ["Mocha extra grande", "Bebida caliente", null, 260, 1, 45, 63, 3, 3, { serving: "xlarge", vitamin_d_ug: 0, calcium_mg: 25, iron_mg: 2 }],
+      ["Macchiato chico", "Bebida caliente", null, 50, 0, 65, 7, 0, 4, { serving: "small", vitamin_d_ug: 1, calcium_mg: 151, iron_mg: 0 }],
+      ["Macchiato mediano", "Bebida caliente", null, 70, 0, 90, 11, 0, 6, { serving: "medium", vitamin_d_ug: 2, calcium_mg: 226, iron_mg: 0 }],
+      ["Macchiato grande", "Bebida caliente", null, 230, 0, 120, 49, 0, 8, { serving: "large", vitamin_d_ug: 3, calcium_mg: 301, iron_mg: 0 }],
+      ["Chocolate Caliente chico", "Bebida caliente", null, 220, 7, 210, 40, 2, 2, { serving: "small", vitamin_d_ug: 0, calcium_mg: 34, iron_mg: 0 }],
+      ["Chocolate Caliente mediano", "Bebida caliente", null, 330, 10, 320, 59, 2, 3, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 50, iron_mg: 0 }],
+      ["Chocolate Caliente grande", "Bebida caliente", null, 460, 14, 440, 82, 3, 4, { serving: "large", vitamin_d_ug: 0, calcium_mg: 70, iron_mg: 1 }],
+      ["Chocolate Caliente extra grande", "Bebida caliente", null, 500, 15, 480, 89, 3, 4, { serving: "xlarge", vitamin_d_ug: 0, calcium_mg: 76, iron_mg: 1 }],
+      ["Box O'Joe (1 vaso chico)", "Bebida caliente", null, 5, 0, 5, 0, 0, 0, { serving: "1 small cup", vitamin_d_ug: 0, calcium_mg: 6, iron_mg: 0 }],
+      ["Iced Cappuccino chico", "Bebida fría", null, 45, 0, 65, 7, 0, 4, { serving: "small", vitamin_d_ug: 1, calcium_mg: 158, iron_mg: 0 }],
+      ["Iced Cappuccino mediano", "Bebida fría", null, 70, 0, 95, 10, 0, 6, { serving: "medium", vitamin_d_ug: 2, calcium_mg: 236, iron_mg: 0 }],
+      ["Iced Cappuccino grande", "Bebida fría", null, 230, 0, 130, 48, 0, 8, { serving: "large", vitamin_d_ug: 3, calcium_mg: 316, iron_mg: 0 }],
+      ["Frozen Coffee chico", "Bebida fría", null, 250, 1, 95, 59, 0, 1, { serving: "small", vitamin_d_ug: 1, calcium_mg: 187, iron_mg: 0 }],
+      ["Frozen Coffee mediano", "Bebida fría", null, 370, 1.5, 140, 88, 0, 2, { serving: "medium", vitamin_d_ug: 1, calcium_mg: 280, iron_mg: 0 }],
+      ["Frozen Coffee grande", "Bebida fría", null, 500, 2, 190, 118, 0, 2, { serving: "large", vitamin_d_ug: 2, calcium_mg: 374, iron_mg: 1 }],
+      ["Iced Latte chico", "Bebida fría", null, 70, 2, 130, 11, 0, 1, { serving: "small", vitamin_d_ug: 2, calcium_mg: 358, iron_mg: 1 }],
+      ["Iced Latte mediano", "Bebida fría", null, 100, 3, 190, 17, 1, 1, { serving: "medium", vitamin_d_ug: 3, calcium_mg: 536, iron_mg: 1 }],
+      ["Iced Latte grande", "Bebida fría", null, 130, 3.5, 260, 23, 1, 2, { serving: "large", vitamin_d_ug: 4, calcium_mg: 715, iron_mg: 1 }],
+      ["Cold Brew chico", "Bebida fría", null, 60, 6, 30, 1, 0, 1, { serving: "small", vitamin_d_ug: 0, calcium_mg: 37, iron_mg: 0 }],
+      ["Cold Brew mediano", "Bebida fría", null, 90, 9, 45, 1, 0, 2, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 55, iron_mg: 0 }],
+      ["Cold Brew grande", "Bebida fría", null, 120, 12, 65, 2, 0, 2, { serving: "large", vitamin_d_ug: 1, calcium_mg: 75, iron_mg: 0 }],
+      ["Nitro Cold Brew chico", "Bebida fría", null, 5, 0, 5, 0, 0, 0, { serving: "small", vitamin_d_ug: 0, calcium_mg: 6, iron_mg: 0 }],
+      ["Iced Green Tea chico", "Bebida fría", null, 70, 0, 10, 16, 0, 1, { serving: "small", vitamin_d_ug: 0, calcium_mg: 5, iron_mg: 0 }],
+      ["Iced Green Tea mediano", "Bebida fría", null, 100, 0, 10, 25, 0, 1, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 6, iron_mg: 0 }],
+      ["Iced Green Tea grande", "Bebida fría", null, 140, 0, 15, 33, 0, 1, { serving: "large", vitamin_d_ug: 0, calcium_mg: 10, iron_mg: 0 }],
+      ["Lemonade chico", "Bebida fría", null, 120, 0, 15, 30, 0, 0, { serving: "small", vitamin_d_ug: 0, calcium_mg: 13, iron_mg: 0 }],
+      ["Lemonade mediano", "Bebida fría", null, 180, 0, 20, 45, 0, 0, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 19, iron_mg: 0 }],
+      ["Lemonade grande", "Bebida fría", null, 240, 0, 25, 60, 0, 0, { serving: "large", vitamin_d_ug: 0, calcium_mg: 27, iron_mg: 0 }],
+      ["Original Iced Americano chico", "Bebida fría", null, 5, 0, 25, 1, 0, 0, { serving: "small", vitamin_d_ug: 0, calcium_mg: 13, iron_mg: 0 }],
+      ["Original Iced Americano mediano", "Bebida fría", null, 10, 0, 30, 2, 0, 0, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 18, iron_mg: 0 }],
+      ["Original Iced Americano grande", "Bebida fría", null, 10, 0, 40, 2, 0, 0, { serving: "large", vitamin_d_ug: 0, calcium_mg: 25, iron_mg: 0 }],
+      ["Iced Macchiato chico", "Bebida fría", null, 50, 0, 70, 7, 0, 4, { serving: "small", vitamin_d_ug: 1, calcium_mg: 159, iron_mg: 0 }],
+      ["Iced Macchiato mediano", "Bebida fría", null, 70, 0, 100, 11, 0, 6, { serving: "medium", vitamin_d_ug: 2, calcium_mg: 237, iron_mg: 0 }],
+      ["Iced Macchiato grande", "Bebida fría", null, 90, 0, 135, 14, 0, 8, { serving: "large", vitamin_d_ug: 3, calcium_mg: 317, iron_mg: 0 }],
+      ["Iced Chai Latte chico", "Bebida fría", null, 150, 0, 105, 29, 1, 7, { serving: "small", vitamin_d_ug: 2, calcium_mg: 233, iron_mg: 0 }],
+      ["Iced Chai Latte mediano", "Bebida fría", null, 220, 0, 160, 44, 2, 10, { serving: "medium", vitamin_d_ug: 3, calcium_mg: 349, iron_mg: 0 }],
+      ["Iced Chai Latte grande", "Bebida fría", null, 290, 0.5, 210, 58, 2, 13, { serving: "large", vitamin_d_ug: 4, calcium_mg: 466, iron_mg: 1 }],
+      ["Iced Matcha Latte chico", "Bebida fría", null, 120, 2, 120, 24, 1, 2, { serving: "small", vitamin_d_ug: 4, calcium_mg: 351, iron_mg: 1 }],
+      ["Iced Matcha Latte mediano", "Bebida fría", null, 180, 2.5, 180, 36, 2, 3, { serving: "medium", vitamin_d_ug: 6, calcium_mg: 526, iron_mg: 1 }],
+      ["Iced Matcha Latte grande", "Bebida fría", null, 230, 3.5, 240, 48, 3, 3, { serving: "large", vitamin_d_ug: 8, calcium_mg: 702, iron_mg: 1 }],
+      ["Frozen Chocolate chico", "Bebida fría", null, 490, 11, 170, 94, 2, 5, { serving: "small", vitamin_d_ug: 1, calcium_mg: 149, iron_mg: 1 }],
+      ["Frozen Chocolate mediano", "Bebida fría", null, 690, 15, 250, 134, 3, 7, { serving: "medium", vitamin_d_ug: 2, calcium_mg: 214, iron_mg: 2 }],
+      ["Frozen Chocolate grande", "Bebida fría", null, 890, 18, 330, 175, 4, 10, { serving: "large", vitamin_d_ug: 3, calcium_mg: 281, iron_mg: 2 }],
+      ["Frozen Matcha chico", "Bebida fría", null, 240, 0, 50, 55, 1, 4, { serving: "small", vitamin_d_ug: 3, calcium_mg: 121, iron_mg: 0 }],
+      ["Frozen Matcha mediano", "Bebida fría", null, 360, 0, 70, 83, 1, 6, { serving: "medium", vitamin_d_ug: 5, calcium_mg: 182, iron_mg: 0 }],
+      ["Frozen Matcha grande", "Bebida fría", null, 480, 0, 95, 111, 2, 8, { serving: "large", vitamin_d_ug: 6, calcium_mg: 242, iron_mg: 0 }],
+      ["Frozen Chai chico", "Bebida fría", null, 350, 6, 110, 66, 1, 6, { serving: "small", vitamin_d_ug: 2, calcium_mg: 217, iron_mg: 0 }],
+      ["Frozen Chai mediano", "Bebida fría", null, 520, 9, 160, 99, 2, 9, { serving: "medium", vitamin_d_ug: 4, calcium_mg: 325, iron_mg: 0 }],
+      ["Frozen Chai grande", "Bebida fría", null, 690, 12, 220, 132, 2, 12, { serving: "large", vitamin_d_ug: 5, calcium_mg: 434, iron_mg: 1 }],
+      ["Strawberry Dragonfruit Refresher chico", "Bebida fría", null, 80, 0, 10, 19, 0, 0, { serving: "small", vitamin_d_ug: 0, calcium_mg: 8, iron_mg: 0 }],
+      ["Strawberry Dragonfruit Refresher mediano", "Bebida fría", null, 130, 0, 15, 29, 0, 1, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 10, iron_mg: 0 }],
+      ["Strawberry Dragonfruit Refresher grande", "Bebida fría", null, 170, 0, 20, 39, 0, 1, { serving: "large", vitamin_d_ug: 0, calcium_mg: 16, iron_mg: 0 }],
+      ["Mango Pineapple Refresher chico", "Bebida fría", null, 90, 0, 10, 21, 0, 0, { serving: "small", vitamin_d_ug: 0, calcium_mg: 9, iron_mg: 0 }],
+      ["Mango Pineapple Refresher mediano", "Bebida fría", null, 130, 0, 15, 32, 0, 1, { serving: "medium", vitamin_d_ug: 0, calcium_mg: 12, iron_mg: 0 }],
+      ["Mango Pineapple Refresher grande", "Bebida fría", null, 170, 0, 25, 42, 0, 1, { serving: "large", vitamin_d_ug: 0, calcium_mg: 17, iron_mg: 0 }],
+      ["English Muffin Huevo y Tocino", "Salado", null, 400, 19, 840, 39, 1, 18, { serving: "1 s\u00e1ndwich", vitamin_d_ug: 2, calcium_mg: 126, iron_mg: 3 }],
+      ["Grilled Cheese Jamón y Queso", "Salado", null, 480, 20, 1120, 54, 3, 21, { serving: "1 s\u00e1ndwich", vitamin_d_ug: 0, calcium_mg: 407, iron_mg: 4 }],
+      ["Bagel Queso Crema", "Salado", null, 300, 1, 620, 64, 4, 11, { serving: "1 bagel", vitamin_d_ug: 0, calcium_mg: 20, iron_mg: 4 }],
+      ["Glazed Munchkins (1 pieza)", "Munchkins", null, 60, 3, 60, 7, 0, 1, { serving: "1 pieza", vitamin_d_ug: 0, calcium_mg: 2, iron_mg: 0 }],
+      ["Chocolate Cake Munchkins (1 pieza)", "Munchkins", null, 60, 3.5, 80, 8, 0, 1, { serving: "1 pieza", vitamin_d_ug: 0, calcium_mg: 6, iron_mg: 0 }],
+      ["Blueberry Munchkins (1 pieza)", "Munchkins", null, 60, 2.5, 75, 9, 0, 1, { serving: "1 pieza", vitamin_d_ug: 0, calcium_mg: 5, iron_mg: 0 }],
+      ["Mixto Munchkins (1 pieza)", "Munchkins", null, 60, 3.5, 65, 7, 0, 1, { serving: "1 pieza", vitamin_d_ug: 0, calcium_mg: 3, iron_mg: 0 }],
+    ],
+  },
 };
 
 /** チェーン店のメニュー1品の栄養素(1食分)。公式の表にない栄養素は null(不明) */
 export function chainItemNutrients(row) {
-  const [, , , kcal, fat, sodiumMg, carbs, fiber, protein] = row;
+  const [, , , kcal, fat, sodiumMg, carbs, fiber, protein, extra = {}] = row;
+  const known = (k) => (typeof extra[k] === "number" ? extra[k] : null);
   return {
     energy_kcal: kcal,
     protein_g: protein,
@@ -77,13 +172,13 @@ export function chainItemNutrients(row) {
     carbs_g: carbs,
     fiber_g: fiber,
     salt_g: Math.round(((sodiumMg * 2.54) / 1000) * 100) / 100, // ナトリウム(mg) × 2.54 ÷ 1000 = 食塩相当量(g)
-    calcium_mg: null,
-    iron_mg: null,
-    vitamin_a_ug: null,
-    vitamin_b1_mg: null,
-    vitamin_b2_mg: null,
-    vitamin_c_mg: null,
-    vitamin_d_ug: null,
+    calcium_mg: known("calcium_mg"),
+    iron_mg: known("iron_mg"),
+    vitamin_a_ug: known("vitamin_a_ug"),
+    vitamin_b1_mg: known("vitamin_b1_mg"),
+    vitamin_b2_mg: known("vitamin_b2_mg"),
+    vitamin_c_mg: known("vitamin_c_mg"),
+    vitamin_d_ug: known("vitamin_d_ug"),
   };
 }
 
@@ -97,7 +192,7 @@ export function searchChainItems(query, limit = 20) {
   for (const [chainKey, chain] of Object.entries(CHAINS)) {
     for (const [i, row] of chain.items.entries()) {
       const hay = foldChain(`${chain.name} ${row[0]} ${row[1]}`);
-      if (words.every((w) => hay.includes(w))) out.push({ key: `${chainKey}:${i}`, chain: chain.name, name: row[0], grams: row[2], official: chain.official, nutrients: chainItemNutrients(row) });
+      if (words.every((w) => hay.includes(w))) out.push({ key: `${chainKey}:${i}`, chain: chain.name, name: row[0], grams: row[2], serving: row[9]?.serving ?? null, official: chain.official, nutrients: chainItemNutrients(row) });
     }
   }
   // 検索語に近い(名前が短い)ものを先に出す

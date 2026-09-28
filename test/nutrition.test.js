@@ -242,7 +242,15 @@ test("チェーン店のメニューを検索でき、公式にない栄養素�
   assert.equal(pollo.nutrients.energy_kcal, 290);
   assert.equal(pollo.nutrients.salt_g, 1.12, "ナトリウム440mg → 食塩1.12g");
   assert.equal(pollo.nutrients.calcium_mg, null);
-  for (const row of CHAINS.subway.items) assert.equal(row.length, 9, row[0]);
+  for (const chain of Object.values(CHAINS)) for (const row of chain.items) {
+    assert.ok(row.length === 9 || row.length === 10, row[0]);
+    assert.ok(row[2] > 0 || row[9]?.serving, `${row[0]}: g か量の表記が必要`);
+    for (const v of row.slice(3, 9)) assert.ok(typeof v === "number" && v >= 0, row[0]);
+  }
+  const [dona] = searchChainItems("dunkin boston kreme");
+  assert.equal(dona.serving, "1 dona");
+  assert.equal(dona.nutrients.calcium_mg, 33, "Dunkin' はカルシウムを公開している");
+  assert.equal(dona.nutrients.vitamin_c_mg, null);
   const eaten = { portion_nutrients: pollo.nutrients, remaining_percent: 0 };
   assert.equal(sumConsumed([eaten]).calcium_mg, 0);
   assert.ok(unknownNutrients([eaten]).has("calcium_mg"));
