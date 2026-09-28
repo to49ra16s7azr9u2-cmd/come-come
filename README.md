@@ -35,7 +35,7 @@
 
 1. 上のボタンを押し、Render に GitHub でログインする(リポジトリが非公開なら、案内に従って Render の GitHub App にこのリポジトリへのアクセスを許可する)。
 2. 入力を求められる2つの値を入れて「Apply」を押す。
-   - `ANTHROPIC_API_KEY`: Claude の API キー(https://console.anthropic.com/ で発行)
+   - `ANTHROPIC_API_KEY`: Claude の API キー(https://console.anthropic.com/ で発行)。**空欄でも動きます**。その場合は料理の判別をすべてスマホ内のAIで行い、API 料金はかかりません
    - `APP_ACCESS_CODE`: アプリを開くときの合言葉(自分で決める。これを知っている人だけが解析を使える)
 3. 数分で `https://come-come-xxxx.onrender.com` のような URL ができる。スマホでその URL を開き、プロフィールを入力して「Iniciar cámara」を押す。最初にアクセスコードを聞かれる。
 4. ホーム画面に追加すると、アプリのように全画面で開ける(iPhone は Safari の共有ボタン →「ホーム画面に追加」、Android は Chrome のメニュー →「ホーム画面に追加」)。
@@ -69,6 +69,23 @@ npm start
 | `APP_ACCESS_CODE` | (なし) | 設定すると、このコードを入力した端末だけが解析を使える。公開時は必ず設定する |
 | `RATE_LIMIT_PER_MINUTE` | `20` | 端末(IP)ごとの1分あたりの解析回数の上限 |
 | `DAILY_ANALYSIS_LIMIT` | `1500` | サーバー全体の1日あたりの解析回数の上限 |
+
+## スマホ内の料理判別AI(API不要)
+
+API キーが無い場合や、設定で「スマホ内」を選んだ場合は、料理の判別をスマホの中で行います(`public/classifier.js`)。
+
+- 土台は公開モデル CLIP ViT-B/16(MIT ライセンス)の画像部分を 8bit に量子化したもの(約 88 MB、初回だけダウンロードしてブラウザに保存)。
+- 目視で確認した自由ライセンスの料理写真で「料理ごとの代表ベクトル」を学習し、35 品目から判別します。学習・評価の手順は `ml/`、結果は `ml/REPORT.md`。
+- 直近5フレームの多数決で料理を確定し、量は標準の1皿、食べた量はひと口の回数から見積もります。クラウドより精度は下がります。
+- モデルはビルド時に `npm run fetch-model` で `public/models/` にダウンロードし、アプリのサーバーから配信します。
+
+学習し直すとき:
+
+```bash
+npm run fetch-dataset   # Wikimedia Commons から写真を集める(ml/data/、git には含めない)
+# 写真を目視で確認し、ml/review.json に除外する写真の番号を書く
+npm run train           # 評価して ml/REPORT.md と public/models/dish-head.json を更新
+```
 
 ## プレビュー
 

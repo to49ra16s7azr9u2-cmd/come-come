@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free
     region: ohio
-    buildCommand: npm ci --omit=dev
+    buildCommand: npm ci --omit=dev && npm run fetch-model
     startCommand: npm start
     healthCheckPath: /healthz
     envVars:
