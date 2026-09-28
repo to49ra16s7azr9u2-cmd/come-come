@@ -30,6 +30,14 @@ ${script}
 </script>
 `;
 
+// まとめた結果が JavaScript として正しいか確認する(別々のファイルで同じ名前を使うと壊れるため)
+try {
+  new Function(script.replace(/^\s*export\s+/gm, ""));
+} catch (err) {
+  console.error("preview bundle is invalid:", err.message);
+  process.exit(1);
+}
+
 await mkdir(path.join(root, "dist"), { recursive: true });
 await writeFile(path.join(root, "dist", "preview.html"), out);
 console.log("wrote dist/preview.html", `${(out.length / 1024).toFixed(1)} KB`);
