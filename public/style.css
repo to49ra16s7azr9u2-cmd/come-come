@@ -180,6 +180,9 @@ dialog label { display: grid; gap: 4px; margin-bottom: 12px; font-size: 0.9rem; 
 .meal-kcal { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9rem; }
 .dishes li.empty { border: 0; padding: 0; }
 .dishes li.tracking { border-left: 3px solid var(--accent); padding-left: 10px; }
+.alternatives { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chip { padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; border-color: var(--accent); color: var(--accent); }
+.chip.ghost { border-color: var(--line); color: var(--muted); }
 .detail-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .detail-row select { padding: 3px 8px; }
 

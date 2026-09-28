@@ -4,3 +4,4 @@ dist/
 ml/data/
 ml/cache/
 public/models/Xenova/
+ml/data-openverse/

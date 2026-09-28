@@ -14,13 +14,14 @@ import {
   manualDish,
   mealForTime,
   bmi,
+  nutrientsFromIngredients,
 } from "./nutrition.js";
 import { FOOD_DB, foodName, searchFoods } from "./foods.js";
 import { normalizeAnalysis } from "./analysis.js";
 import { LANGS, t, setLang, getLang, detectLang, applyI18n } from "./i18n.js";
 import { loadDetector, BiteTracker, FOOD_CLASSES } from "./detector.js";
 import { loadDishClassifier, DishVote } from "./classifier.js";
-import { DISHES, bitesPerServing } from "./dishes.js";
+import { DISHES, bitesPerServing, searchDishes, dishGrams } from "./dishes.js";
 
 const $ = (id) => document.getElementById(id);
 const video = $("video");
@@ -99,6 +100,8 @@ let detectorLoading = null;
 let bites = new BiteTracker();
 let loopHandle = null;
 let lastDetectAt = 0;
+let detectEvery = 150; // 次の物体検出までの間隔(ms)。端末の速さに合わせて伸ばす
+let slowDetections = 0;
 let detecting = false;
 let lastScheduleAt = 0;
 let detections = [];
@@ -198,12 +201,22 @@ function loop() {
   loopHandle = requestAnimationFrame(loop);
   if (!stream || !video.videoWidth || document.hidden) return;
   const now = performance.now();
-  if (detector && !detecting && now - lastDetectAt > 150) {
+  if (detector && !detecting && now - lastDetectAt > detectEvery) {
     lastDetectAt = now;
     detecting = true;
     detector
       .detect(video)
       .then((d) => {
+        // 検出は画面の処理と同じスレッドで動くため、時間がかかる端末では間隔をあけて操作が固まらないようにする。
+        // 1回に 500ms 以上かかる端末では、ひと口の検出をあきらめて止める(料理の判別は別スレッドなので続く)
+        const took = performance.now() - now;
+        detectEvery = Math.max(150, took * 4);
+        slowDetections = took > 500 ? slowDetections + 1 : 0;
+        if (slowDetections >= 2) {
+          detector = null;
+          detections = [];
+          setStatus(t("status.detectorSlow"));
+        }
         detections = d;
         if (bites.update(d, performance.now())) {
           pendingBites++;
@@ -222,7 +235,7 @@ function loop() {
       .classify(video)
       .then((ranked) => {
         liveDish = ranked[0];
-        const stable = dishVote.push(ranked[0]);
+        const stable = dishVote.push(ranked);
         if (stable) onDeviceDish(stable);
         updateLive();
       })
@@ -240,7 +253,11 @@ function loop() {
 function onDeviceDish({ key, prob }) {
   const lang = getLang();
   const active = activeDishes();
-  const existing = active.find((d) => d.dishKey === key);
+  // 同じ皿かどうか: 同じ料理名、その皿の候補に入っている料理、利用者が修正する前の料理名なら同じ皿とみなす
+  // (車両追跡で、同じ車を別の車種と一瞬見間違えても新しい車として数えないのと同じ)
+  const existing =
+    active.find((d) => d.dishKey === key) ??
+    active.find((d) => d.correctedFrom?.includes(key) || (d.source === "camera" && d.candidates?.includes(key)));
   const dish = DISHES[key];
   const analysis = {
     dishes: [
@@ -261,7 +278,13 @@ function onDeviceDish({ key, prob }) {
   // 同じ料理が続けて確定しても、確認の回数を増やすだけにする(数秒に1回まで)
   if (existing && Date.now() - (existing.updated_at ?? 0) < 5000) return;
   const merged = mergeAnalysis(active, analysis, { db: FOOD_DB, meal: active[0]?.meal });
-  for (const d of merged) if (!d.dishKey && !active.some((a) => a.id === d.id)) d.dishKey = key;
+  // 1タップで選び直せるよう、候補の上位3つを料理に残す
+  const candidates = dishVote.candidates(3).map((c) => c.key);
+  for (const d of merged) {
+    if (!d.dishKey && !active.some((a) => a.id === d.id)) d.dishKey = key;
+    // 利用者が修正した皿の料理名と候補は、AIの判断で上書きしない
+    if (d.dishKey === key && !d.corrected) d.candidates = [key, ...candidates.filter((c) => c !== key)].slice(0, 3);
+  }
   const others = day.dishes.filter((d) => !day.activeIds.includes(d.id));
   day.dishes = [...others, ...merged];
   day.activeIds = merged.map((d) => d.id);
@@ -525,8 +548,19 @@ function renderToday(results, targets) {
   $("scoreRing").style.setProperty("--p", score);
 }
 
+// 表示に関わる内容が変わったときだけ作り直す(カメラ中に数秒ごとに作り直すと、
+// ボタンを押す瞬間に消えたり、開いた内訳が閉じたり、スライダー操作が戻ったりするため)
+let mealsSignature = "";
 function renderMeals() {
   const active = new Set(day.activeIds);
+  const signature = JSON.stringify([
+    getLang(),
+    day.activeIds,
+    day.dishes.map((d) => [d.id, d.name, d.meal, Math.round(d.remaining_percent), d.scale, d.confirmed, d.candidates, d.dishKey, d.serving_description, d.reference]),
+  ]);
+  if (signature === mealsSignature) return;
+  mealsSignature = signature;
+  const openIds = new Set([...$("meals").querySelectorAll("details[open]")].map((el) => el.closest("li")?.dataset.id));
   $("meals").replaceChildren(
     ...MEALS.map((meal) => {
       const dishes = day.dishes.filter((d) => (d.meal ?? mealForTime(new Date(d.created_at))) === meal);
@@ -550,7 +584,11 @@ function renderMeals() {
         li.textContent = t("meals.empty");
         list.append(li);
       }
-      for (const d of dishes) list.append(dishItem(d, active.has(d.id)));
+      for (const d of dishes) {
+        const item = dishItem(d, active.has(d.id));
+        if (openIds.has(d.id)) item.querySelector("details").open = true;
+        list.append(item);
+      }
       return group;
     }),
   );
@@ -563,6 +601,7 @@ function dishItem(d, tracking) {
   const scales = [0.5, 0.75, 1, 1.25, 1.5, 2];
   const tentative = d.confirmed === false;
   li.className = tracking ? "tracking" : "";
+  li.dataset.id = d.id;
   li.innerHTML = `
     <div class="dish-row">
       <div>
@@ -584,6 +623,10 @@ function dishItem(d, tracking) {
         <select class="meal-select">${MEALS.map((m) => `<option value="${m}" ${m === d.meal ? "selected" : ""}></option>`).join("")}</select>
       </div>
     </details>
+    <div class="alternatives" hidden>
+      <span class="muted small alt-label"></span>
+      <span class="alt-buttons"></span>
+    </div>
     <div class="dish-actions">
       <span class="muted small hint"></span>
       <span>
@@ -613,6 +656,29 @@ function dishItem(d, tracking) {
       return row;
     }),
   );
+  // 端末内AIが迷った候補: 1タップで料理を選び直せる
+  const alts = (d.candidates ?? []).filter((k) => k !== d.dishKey && DISHES[k]);
+  if (alts.length) {
+    const box = li.querySelector(".alternatives");
+    box.hidden = false;
+    box.querySelector(".alt-label").textContent = t("dish.notThis");
+    box.querySelector(".alt-buttons").replaceChildren(
+      ...alts.map((k) => {
+        const b = document.createElement("button");
+        b.className = "chip";
+        b.textContent = DISHES[k].names[getLang()] ?? DISHES[k].names.en;
+        b.onclick = () => replaceDish(d.id, k);
+        return b;
+      }),
+      (() => {
+        const b = document.createElement("button");
+        b.className = "chip ghost";
+        b.textContent = t("dish.searchOther");
+        b.onclick = () => openAddDialog(d.meal, d.id);
+        return b;
+      })(),
+    );
+  }
   const range = li.querySelector('input[type="range"]');
   range.oninput = () => (li.querySelector("output").textContent = range.value + "%");
   range.onchange = () => updateDish(d.id, { remaining_percent: 100 - Number(range.value), observations: [] });
@@ -722,6 +788,31 @@ function updateDish(id, patch) {
   render();
 }
 
+/** 料理を別の料理に差し替える(食べた割合・量の補正・食事区分はそのまま) */
+function replaceDish(id, key) {
+  const dish = DISHES[key];
+  const lang = getLang();
+  const ingredients = dish.recipe.map((r) => ({ name: foodName(r.db_key, lang), db_key: r.db_key, grams: r.grams }));
+  const before = day.dishes.find((d) => d.id === id);
+  logCorrection(before?.dishKey ?? null, key);
+  updateDish(id, {
+    correctedFrom: [...new Set([...(before?.correctedFrom ?? []), before?.dishKey].filter(Boolean))],
+    name: dish.names[lang] ?? dish.names.en,
+    dishKey: key,
+    ingredients,
+    portion_nutrients: nutrientsFromIngredients(ingredients, FOOD_DB),
+    confirmed: true,
+    corrected: true,
+  });
+}
+
+/** 利用者による修正の記録(端末内だけに保存)。どの料理を取り違えやすいかの把握に使う */
+function logCorrection(from, to) {
+  const log = store.get("come-come:corrections", []);
+  log.push({ from, to, at: Date.now() });
+  store.set("come-come:corrections", log.slice(-500));
+}
+
 function removeDish(id) {
   day.dishes = day.dishes.filter((d) => d.id !== id);
   day.activeIds = day.activeIds.filter((x) => x !== id);
@@ -729,16 +820,21 @@ function removeDish(id) {
   render();
 }
 
-// ---- 食品の検索と追加 ----
-let addSelection = null;
+// ---- 料理・食品の検索と追加(料理の差し替えにも使う) ----
+let addSelection = null; // { type: "dish" | "food", key }
+let replaceTarget = null; // 差し替える料理の id(新しく追加するときは null)
 
-function openAddDialog(meal) {
+function openAddDialog(meal, replaceId = null) {
   addSelection = null;
+  replaceTarget = replaceId;
+  $("addTitle").textContent = t(replaceId ? "add.replaceTitle" : "add.title");
   $("addSearch").value = "";
   $("addGrams").value = "";
+  $("addGramsLabel").hidden = Boolean(replaceId);
   $("addMeal").innerHTML = MEALS.map((m) => `<option value="${m}"></option>`).join("");
   $("addMeal").querySelectorAll("option").forEach((o) => (o.textContent = t("meal." + o.value)));
   $("addMeal").value = meal;
+  $("addSubmit").textContent = t(replaceId ? "btn.replace" : "btn.add");
   $("addSubmit").disabled = true;
   renderSearch();
   $("addDialog").showModal();
@@ -746,19 +842,32 @@ function openAddDialog(meal) {
 }
 
 function renderSearch() {
-  const results = searchFoods($("addSearch").value, getLang(), 30);
+  const q = $("addSearch").value;
+  const lang = getLang();
+  const dishes = searchDishes(q, lang, 15).map((d) => {
+    const n = nutrientsFromIngredients(DISHES[d.key].recipe, FOOD_DB);
+    return { type: "dish", key: d.key, name: d.name, grams: d.grams, detail: `${Math.round(n.energy_kcal)} kcal · ${t("dish.standardServing")}` };
+  });
+  const foods = searchFoods(q, lang, 20).map((f) => ({
+    type: "food",
+    key: f.key,
+    name: f.name,
+    grams: f.portion_g,
+    detail: `${Math.round(f.per100g.energy_kcal)} kcal/100 g · ${t("add.portion", { g: f.portion_g })}`,
+  }));
   $("addResults").replaceChildren(
-    ...results.map((f) => {
+    ...[...dishes, ...foods].map((r) => {
       const li = document.createElement("li");
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "result" + (addSelection === f.key ? " selected" : "");
+      const selected = addSelection?.type === r.type && addSelection.key === r.key;
+      b.className = "result" + (selected ? " selected" : "");
       b.innerHTML = `<span></span><span class="muted small"></span>`;
-      b.children[0].textContent = f.name;
-      b.children[1].textContent = `${Math.round(f.per100g.energy_kcal)} kcal/100 g · ${t("add.portion", { g: f.portion_g })}`;
+      b.children[0].textContent = r.name;
+      b.children[1].textContent = r.detail;
       b.onclick = () => {
-        addSelection = f.key;
-        $("addGrams").value = f.portion_g;
+        addSelection = { type: r.type, key: r.key };
+        $("addGrams").value = r.grams;
         $("addSubmit").disabled = false;
         renderSearch();
       };
@@ -768,12 +877,36 @@ function renderSearch() {
   );
 }
 
+/** 選んだ料理・食品の材料(g を指定すると、その重さに合わせて全体を増減する) */
+function selectionIngredients(sel, grams) {
+  const lang = getLang();
+  if (sel.type === "food") return [{ name: foodName(sel.key, lang), db_key: sel.key, grams: grams || FOOD_DB[sel.key].portion_g }];
+  const factor = grams ? grams / dishGrams(sel.key) : 1;
+  return DISHES[sel.key].recipe.map((r) => ({ name: foodName(r.db_key, lang), db_key: r.db_key, grams: r.grams * factor }));
+}
+
 $("addSearch").oninput = renderSearch;
 $("addDialog").addEventListener("close", () => {
-  if ($("addDialog").returnValue !== "add" || !addSelection) return;
-  const grams = Number($("addGrams").value) || FOOD_DB[addSelection].portion_g;
+  const action = $("addDialog").returnValue;
+  if (!["add", "replace"].includes(action) || !addSelection) return;
+  const sel = addSelection;
+  const name = sel.type === "dish" ? DISHES[sel.key].names[getLang()] ?? DISHES[sel.key].names.en : foodName(sel.key, getLang());
+  if (replaceTarget) {
+    if (sel.type === "dish") return replaceDish(replaceTarget, sel.key);
+    const before = day.dishes.find((d) => d.id === replaceTarget);
+    logCorrection(before?.dishKey ?? null, "food:" + sel.key);
+    const ingredients = selectionIngredients(sel);
+    return updateDish(replaceTarget, { correctedFrom: [...new Set([...(before?.correctedFrom ?? []), before?.dishKey].filter(Boolean))], name, dishKey: null, ingredients, portion_nutrients: nutrientsFromIngredients(ingredients, FOOD_DB), confirmed: true, corrected: true });
+  }
+  const grams = Number($("addGrams").value) || 0;
+  const ingredients = selectionIngredients(sel, grams);
+  const dish = manualDish({ key: null, name, grams: 0, meal: $("addMeal").value, db: FOOD_DB });
+  dish.ingredients = ingredients;
+  dish.portion_nutrients = nutrientsFromIngredients(ingredients, FOOD_DB);
+  dish.serving_description = `${Math.round(ingredients.reduce((s, i) => s + i.grams, 0))} g`;
+  if (sel.type === "dish") dish.dishKey = sel.key;
   clearSample();
-  day.dishes.push(manualDish({ key: addSelection, name: foodName(addSelection, getLang()), grams, meal: $("addMeal").value, db: FOOD_DB }));
+  day.dishes.push(dish);
   saveDay();
   render();
 });

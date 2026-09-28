@@ -134,11 +134,11 @@
 
   <dialog id="addDialog">
     <form id="addForm" method="dialog">
-      <h2 data-i18n="add.title"></h2>
+      <h2 id="addTitle" data-i18n="add.title"></h2>
       <input id="addSearch" type="search" autocomplete="off" data-i18n-placeholder="add.search" />
       <ul id="addResults" class="add-results"></ul>
       <div class="form-grid">
-        <label><span data-i18n="add.grams"></span><input id="addGrams" type="number" min="1" max="3000" /></label>
+        <label id="addGramsLabel"><span data-i18n="add.grams"></span><input id="addGrams" type="number" min="1" max="3000" /></label>
         <label><span data-i18n="add.meal"></span><select id="addMeal"></select></label>
       </div>
       <div class="dialog-actions">

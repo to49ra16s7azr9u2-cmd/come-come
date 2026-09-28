@@ -107,6 +107,14 @@ test("目標と比較して不足・適量・過剰を判定し、100点満点�
   assert.equal(balanceScore(evaluate(Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0])), targets)), 7, "何も食べていなければ食塩の分だけ");
 });
 
+test("料理名もスペイン語・英語・日本語で検索でき、1皿の重さが分かる", async () => {
+  const { searchDishes, dishGrams } = await import("../public/dishes.js");
+  assert.equal(searchDishes("chilaquil")[0].key, "chilaquiles");
+  assert.equal(searchDishes("エンチラーダ", "ja")[0].key, "enchiladas");
+  assert.equal(searchDishes("pozole", "en")[0].name, "Pozole");
+  assert.equal(dishGrams("pozole"), 400);
+});
+
 test("食品検索はスペイン語・英語・日本語とアクセント無しで引ける", () => {
   assert.equal(searchFoods("platano")[0].key, "banana");
   assert.equal(searchFoods("tortilla", "ja")[0].name, "コーントルティーヤ");
@@ -158,7 +166,8 @@ test("料理一覧の材料はすべて成分表にあり、端末内AIの分類
   const { readFile } = await import("node:fs/promises");
   const head = JSON.parse(await readFile(new URL("../public/models/dish-head.json", import.meta.url), "utf8"));
   assert.deepEqual(head.keys, DISH_KEYS, "料理を増減したら ml/train.mjs で分類ヘッドを作り直す");
-  assert.equal(head.prototypes.length, DISH_KEYS.length);
+  assert.equal((head.W ?? head.prototypes).length, DISH_KEYS.length);
+  if (head.W) assert.equal(head.b.length, DISH_KEYS.length);
 });
 
 test("端末内AIの確率計算と多数決", async () => {
@@ -176,4 +185,15 @@ test("端末内AIの確率計算と多数決", async () => {
   const out = v.push({ key: "a", prob: 0.6 });
   assert.equal(out.key, "a");
   assert.ok(Math.abs(out.prob - 0.7) < 1e-9, "確率は投票したフレームの平均");
+
+  // 候補は直近フレームの確率の平均で上位から(料理ではないものは除く)
+  const w = new DishVote({ window: 3 });
+  w.push([{ key: "a", prob: 0.5 }, { key: "b", prob: 0.3 }, { key: null, prob: 0.2 }]);
+  w.push([{ key: "b", prob: 0.6 }, { key: "a", prob: 0.3 }, { key: "c", prob: 0.1 }]);
+  assert.deepEqual(w.candidates(2).map((c) => c.key), ["b", "a"]);
+
+  // 学習した分類ヘッド(W·x + b)と「料理ではない」判定
+  const lin = { keys: ["a", "b"], W: [[0, 50, 0], [50, 0, 0]], b: [0, 0], textPrototypes: [[1, 0, 0], [0, 1, 0]], nonFood: [[0, 0, 1]] };
+  assert.equal(scoreEmbedding([1, 0.2, 0], lin)[0].key, "b", "W の重みで判別する");
+  assert.equal(scoreEmbedding([0, 0, 1], lin)[0].key, null);
 });

@@ -114,3 +114,18 @@ const BITES_PER_SERVING = {
 export function bitesPerServing(key) {
   return BITES_PER_SERVING[key] ?? 15;
 }
+
+/** 1皿の標準の重さ(g) */
+export function dishGrams(key) {
+  return DISHES[key].recipe.reduce((s, r) => s + r.grams, 0);
+}
+
+const fold = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/** 料理名の検索(スペイン語・英語・日本語、アクセント記号は無視) */
+export function searchDishes(query, lang = "es", limit = 20) {
+  const q = fold(query.trim());
+  const entries = Object.entries(DISHES);
+  const hits = q ? entries.filter(([k, d]) => [k, ...Object.values(d.names)].some((n) => fold(n).includes(q))) : entries;
+  return hits.slice(0, limit).map(([key, d]) => ({ key, name: d.names[lang] ?? d.names.en, grams: dishGrams(key) }));
+}
