@@ -22,7 +22,7 @@ import { FOOD_DB, foodName, searchFoods } from "./foods.js";
 import { normalizeAnalysis } from "./analysis.js";
 import { LANGS, t, setLang, getLang, detectLang, applyI18n } from "./i18n.js";
 import { loadDetector, BiteTracker, FOOD_CLASSES } from "./detector.js";
-import { loadDishClassifier, DishVote, applyStatePrior } from "./classifier.js";
+import { loadDishClassifier, DishVote, applyStatePrior, needsCloud } from "./classifier.js";
 import { DISHES, STATES, bitesPerServing, searchDishes, dishGrams } from "./dishes.js";
 
 const $ = (id) => document.getElementById(id);
@@ -123,7 +123,15 @@ let classifying = false;
 let lastClassifyAt = 0;
 let dishVote = new DishVote();
 let liveDish = null;
-const useCloud = () => cloudAvailable && settings.analysis !== "device";
+// 解析の方法: "device"(スマホ内だけ)、"hybrid"(スマホ内で、自信がないときだけクラウド)、"cloud"(常にクラウド)
+const analysisMode = () => (!cloudAvailable ? "device" : ["device", "hybrid", "cloud"].includes(settings.analysis) ? settings.analysis : "hybrid");
+const useCloud = () => analysisMode() === "cloud";
+// クラウドに聞くしきい値(ml/simulate.mjs で選んだ値を models/hybrid.json から読む)と、聞きすぎないための制限
+let hybridThreshold = 0.6;
+const ESCALATION_GAP_MS = 30_000;
+const ESCALATIONS_PER_MEAL = 6;
+let lastEscalationAt = 0;
+let escalations = 0;
 
 async function startCamera() {
   stopCamera();
@@ -161,6 +169,7 @@ async function startCamera() {
   }
   dishVote = new DishVote();
   liveDish = null;
+  escalations = 0;
   if (!useCloud() && !dishClassifier) {
     // 初回だけ約 88 MB のモデルをダウンロードする(以降はブラウザに保存される)
     setStatus(t("status.loadingDishModel", { pct: 0 }), "busy");
@@ -181,6 +190,7 @@ async function startCamera() {
 }
 
 function stopCamera() {
+  finalizeCloudLabels();
   cancelAnimationFrame(loopHandle);
   loopHandle = null;
   stream?.getTracks().forEach((tr) => tr.stop());
@@ -230,7 +240,7 @@ function loop() {
       .catch(() => {})
       .finally(() => (detecting = false));
   }
-  if (!useCloud() && dishClassifier && !classifying && now - lastClassifyAt > 1000) {
+  if (!useCloud() && dishClassifier && !classifying && !busy && now - lastClassifyAt > 1000) {
     lastClassifyAt = now;
     classifying = true;
     dishClassifier
@@ -239,6 +249,7 @@ function loop() {
         const ranked = applyStatePrior(raw, STATES[profile.state]?.dishes);
         liveDish = ranked[0];
         const stable = dishVote.push(ranked);
+        if (analysisMode() === "hybrid" && maybeEscalate(stable)) return;
         if (stable) onDeviceDish(stable);
         updateLive();
       })
@@ -250,6 +261,31 @@ function loop() {
     if (useCloud()) maybeAnalyze();
     else if (pendingBites > 0) applyDeviceBites();
   }
+}
+
+/**
+ * スマホ内AIの自信が低いまま続いているときだけ、そのフレームをクラウドに聞く。
+ * 直近のフレームの平均で判断し(1枚だけ迷ったときは聞かない)、30秒に1回・1食6回までに抑える。
+ */
+function maybeEscalate(stable) {
+  if (busy) return false;
+  // 多数決で料理が決まりそうなときはその自信で、決まらないまま直近のフレームが揃ったときは平均の1位で判断する
+  let top;
+  if (stable) top = stable;
+  else if (dishVote.history.length >= dishVote.window) [top] = dishVote.candidates(1);
+  else return false;
+  // 料理が映っていない(料理ではない確率がいちばん高い)ときは聞かない
+  if (!stable && dishVote.history.every(([f]) => !f?.key)) return false;
+  if (!needsCloud(top, hybridThreshold)) return false;
+  // すでにクラウドが判別した料理が映っているなら聞き直さない
+  if (activeDishes().some((d) => d.measured && d.dishKey && d.dishKey === top?.key)) return false;
+  const now = Date.now();
+  if (now - lastEscalationAt < ESCALATION_GAP_MS || escalations >= ESCALATIONS_PER_MEAL || now < pausedUntil) return false;
+  lastEscalationAt = now;
+  escalations++;
+  dishVote = new DishVote();
+  analyzeFrame({ keepBites: true, note: t("status.askingCloud") });
+  return true;
 }
 
 // ---- 端末内モード: 料理名は端末内AI、量は標準の1皿、食べた量はひと口の回数から見積もる ----
@@ -282,11 +318,12 @@ function onDeviceDish({ key, prob }) {
   if (existing && Date.now() - (existing.updated_at ?? 0) < 5000) return;
   const merged = mergeAnalysis(active, analysis, { db: FOOD_DB, meal: active[0]?.meal });
   // 1タップで選び直せるよう、候補の上位3つを料理に残す
-  const candidates = dishVote.candidates(3).map((c) => c.key);
+  const candidates = dishVote.candidates(3, STATES[profile.state]?.dishes).map((c) => c.key);
   for (const d of merged) {
     if (!d.dishKey && !active.some((a) => a.id === d.id)) d.dishKey = key;
     // 利用者が修正した皿の料理名と候補は、AIの判断で上書きしない
     if (d.dishKey === key && !d.corrected) d.candidates = [key, ...candidates.filter((c) => c !== key)].slice(0, 3);
+    if (!active.some((a) => a.id === d.id)) rememberPhoto(d.id);
   }
   const others = day.dishes.filter((d) => !day.activeIds.includes(d.id));
   day.dishes = [...others, ...merged];
@@ -364,12 +401,13 @@ function captureFrame() {
   return canvas.toDataURL("image/jpeg", 0.8);
 }
 
-async function analyzeFrame() {
+async function analyzeFrame({ keepBites = false, note = null } = {}) {
   busy = true;
   lastAnalysisAt = Date.now();
-  const bitesNow = pendingBites;
-  pendingBites = 0;
-  setStatus(t("status.analyzing"), "busy");
+  // スマホ内モードからクラウドに聞くときは、ひと口の回数はスマホ側で数え続ける
+  const bitesNow = keepBites ? 0 : pendingBites;
+  if (!keepBites) pendingBites = 0;
+  setStatus(note ?? t("status.analyzing"), "busy");
   try {
     let res;
     try {
@@ -422,7 +460,11 @@ function activeDishes() {
 function applyAnalysis(analysis) {
   const active = activeDishes();
   const merged = mergeAnalysis(active, analysis, { db: FOOD_DB, meal: active[0]?.meal });
-  for (const d of merged) if (!active.some((a) => a.id === d.id)) d.measured = true; // クラウドは量(g)を測っている
+  for (const d of merged) {
+    if (active.some((a) => a.id === d.id)) continue;
+    d.measured = true; // クラウドは量(g)を測っている
+    rememberPhoto(d.id, d.dishKey);
+  }
   const others = day.dishes.filter((d) => !day.activeIds.includes(d.id));
   day.dishes = [...others, ...merged];
   day.activeIds = merged.map((d) => d.id);
@@ -691,7 +733,10 @@ function dishItem(d, tracking) {
   range.onchange = () => updateDish(d.id, { remaining_percent: 100 - Number(range.value), observations: [] });
   li.querySelector(".scale").onchange = (e) => updateDish(d.id, { scale: Number(e.target.value) });
   li.querySelector(".meal-select").onchange = (e) => updateDish(d.id, { meal: e.target.value });
-  li.querySelector('[data-act="confirm"]').onclick = () => updateDish(d.id, { confirmed: true });
+  li.querySelector('[data-act="confirm"]').onclick = () => {
+    if (d.dishKey) contribute(d.id, d.dishKey, "user_confirmed");
+    updateDish(d.id, { confirmed: true });
+  };
   li.querySelector('[data-act="done"]').onclick = () => updateDish(d.id, { remaining_percent: 0 });
   li.querySelector('[data-act="remove"]').onclick = () => removeDish(d.id);
   return li;
@@ -806,6 +851,7 @@ function replaceDish(id, key) {
   const factor = measuredGrams > 0 ? measuredGrams / dishGrams(key) : 1;
   const ingredients = dish.recipe.map((r) => ({ name: foodName(r.db_key, lang), db_key: r.db_key, grams: r.grams * factor }));
   logCorrection(before?.dishKey ?? null, key);
+  contribute(id, key, "user_corrected");
   updateDish(id, {
     correctedFrom: [...new Set([...(before?.correctedFrom ?? []), before?.dishKey].filter(Boolean))],
     name: dish.names[lang] ?? dish.names.en,
@@ -816,6 +862,77 @@ function replaceDish(id, key) {
     corrected: true,
   });
 }
+
+// ---- 写真の提供(同意した利用者だけ。料理判別AIの学習に使う) ----
+// 料理を見つけたときの画像を端末のメモリにだけ置き、修正・確定・クラウドの判別で正解が分かったときに送る。
+// 画像は中央の正方形を 384 px に縮めた JPEG(位置情報などは含まれない)。
+let contributionsEnabled = false;
+const photoByDish = new Map();
+const pendingContributions = [];
+let contributorId = store.get("come-come:contributor", null);
+if (!contributorId) {
+  contributorId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  store.set("come-come:contributor", contributorId);
+}
+
+// cloudKey: クラウドが判別した料理。利用者が修正・確定しなかったときだけ、食事の終わりに "cloud" として送る
+function rememberPhoto(dishId, cloudKey = null) {
+  if (!contributionsEnabled || settings.contribute === false || !video.videoWidth) return;
+  const c = document.createElement("canvas");
+  const s = Math.min(video.videoWidth, video.videoHeight);
+  c.width = c.height = 384;
+  c.getContext("2d").drawImage(video, (video.videoWidth - s) / 2, (video.videoHeight - s) / 2, s, s, 0, 0, 384, 384);
+  photoByDish.set(dishId, { image: c.toDataURL("image/jpeg", 0.85), cloudKey });
+  while (photoByDish.size > 20) photoByDish.delete(photoByDish.keys().next().value);
+}
+
+function contribute(dishId, dishKey, source) {
+  const image = photoByDish.get(dishId)?.image;
+  if (!contributionsEnabled || !image || settings.contribute === false) return;
+  photoByDish.delete(dishId); // 同じ写真を2回(別の料理名で)送らない
+  pendingContributions.push({ image, dish_key: dishKey, source, state: profile.state, contributor: contributorId });
+  if (settings.contribute === true) flushContributions();
+  else if (!$("consentDialog").open) $("consentDialog").showModal(); // まだ聞いていなければ、最初の1回だけ聞く
+}
+
+/** 食事の区切り・カメラ停止のとき、利用者が直さなかったクラウドの判別を送る */
+function finalizeCloudLabels() {
+  for (const [dishId, p] of [...photoByDish]) if (p.cloudKey) contribute(dishId, p.cloudKey, "cloud");
+  photoByDish.clear();
+}
+
+async function flushContributions() {
+  while (pendingContributions.length) {
+    const item = pendingContributions.shift();
+    try {
+      await fetch("/api/contribute", { method: "POST", headers: { "content-type": "application/json", "x-access-code": accessCode }, body: JSON.stringify(item) });
+    } catch {
+      /* 送れなくても記録には影響しない */
+    }
+  }
+}
+
+$("consentDialog").addEventListener("close", () => {
+  const yes = $("consentDialog").returnValue === "yes";
+  settings = { ...settings, contribute: yes };
+  store.set("come-come:settings", settings);
+  if (yes) flushContributions();
+  else pendingContributions.length = 0;
+});
+
+$("deleteContribBtn").onclick = async () => {
+  const btn = $("deleteContribBtn");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/contribute/delete", { method: "POST", headers: { "content-type": "application/json", "x-access-code": accessCode }, body: JSON.stringify({ contributor: contributorId }) });
+    const data = await res.json();
+    btn.textContent = res.ok ? t("contrib.deleted", { n: data.deleted }) : t("status.failed", { error: data.error });
+  } catch (err) {
+    btn.textContent = t("status.failed", { error: err.message });
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 /** 利用者による修正の記録(端末内だけに保存)。どの料理を取り違えやすいかの把握に使う */
 function logCorrection(from, to) {
@@ -855,7 +972,9 @@ function openAddDialog(meal, replaceId = null) {
 function renderSearch() {
   const q = $("addSearch").value;
   const lang = getLang();
-  const dishes = searchDishes(q, lang, 15).map((d) => {
+  const stateDishes = STATES[profile.state]?.dishes ?? [];
+  const found = q.trim() ? searchDishes(q, lang, 15) : [...stateDishes.map((k) => ({ key: k, name: DISHES[k].names[lang] ?? DISHES[k].names.en, grams: dishGrams(k) })), ...searchDishes("", lang, 15).filter((d) => !stateDishes.includes(d.key))].slice(0, 15);
+  const dishes = found.map((d) => {
     const n = nutrientsFromIngredients(DISHES[d.key].recipe, FOOD_DB);
     return { type: "dish", key: d.key, name: d.name, grams: d.grams, detail: `${Math.round(n.energy_kcal)} kcal · ${t("dish.standardServing")}` };
   });
@@ -962,7 +1081,7 @@ function fillProfileForm(onboarding, values = null) {
   $("pfCountry").innerHTML = COUNTRIES.map((c) => `<option value="${c}">${t("country." + c)}</option>`).join("");
   $("pfState").innerHTML = [`<option value="">${t("profile.stateNone")}</option>`, ...Object.entries(STATES).sort((a, b) => a[1].name.localeCompare(b[1].name, "es")).map(([c, st]) => `<option value="${c}">${st.name}</option>`)].join("");
   $("pfPlan").innerHTML = ["free", "premium"].map((p) => `<option value="${p}">${t("plan." + p)}</option>`).join("");
-  $("pfAnalysis").innerHTML = ["device", "cloud"].map((m) => `<option value="${m}" ${m === "cloud" && !cloudAvailable ? "disabled" : ""}>${t("analysis." + m)}</option>`).join("");
+  $("pfAnalysis").innerHTML = ["device", "hybrid", "cloud"].map((m) => `<option value="${m}" ${m !== "device" && !cloudAvailable ? "disabled" : ""}>${t("analysis." + m)}</option>`).join("");
   const v = values ?? {
     lang: getLang(),
     sex: profile.sex,
@@ -976,10 +1095,16 @@ function fillProfileForm(onboarding, values = null) {
     plate_cm: profile.plate_cm || "",
     state: profile.state,
     plan: settings.plan,
-    analysis: useCloud() ? "cloud" : "device",
+    analysis: analysisMode(),
+    contribute: settings.contribute === true ? "on" : "",
   };
   const form = $("profileForm");
-  for (const [k, val] of Object.entries(v)) if (form.elements[k]) form.elements[k].value = val;
+  for (const [k, val] of Object.entries(v)) {
+    const el = form.elements[k];
+    if (!el) continue;
+    if (el.type === "checkbox") el.checked = val === "on" || val === true;
+    else el.value = val;
+  }
 }
 
 function openProfile(onboarding = false) {
@@ -1006,10 +1131,12 @@ $("profileDialog").addEventListener("close", () => {
     render();
     return;
   }
-  const { lang, plan, analysis, ...f } = Object.fromEntries(new FormData($("profileForm")));
+  const { lang, plan, analysis, contribute: contributeOn, ...f } = Object.fromEntries(new FormData($("profileForm")));
   profile = { ...normalizeProfile({ ...profile, ...f }), onboarded: true };
   const modeChanged = (analysis ?? settings.analysis) !== settings.analysis;
-  settings = { ...settings, lang, plan, analysis: analysis ?? settings.analysis };
+  // まだ聞いていない人(undefined)はチェックを付けたときだけ同意とし、付けていなければ「まだ聞いていない」のままにする
+  const contribute = !contributionsEnabled ? settings.contribute : contributeOn === "on" ? true : settings.contribute === undefined ? undefined : false;
+  settings = { ...settings, lang, plan, analysis: analysis ?? settings.analysis, contribute };
   if (modeChanged && stream) startCamera();
   store.set("come-come:profile", profile);
   store.set("come-come:settings", settings);
@@ -1074,6 +1201,7 @@ $("premiumDialog").addEventListener("close", () => {
 });
 $("settingsBtn").onclick = () => openProfile(false);
 $("newMealBtn").onclick = () => {
+  finalizeCloudLabels();
   day.activeIds = [];
   saveDay();
   render();
@@ -1133,6 +1261,14 @@ if (!PREVIEW) {
     .then((c) => {
       accessRequired = Boolean(c.accessCodeRequired);
       cloudAvailable = c.cloudAvailable !== false;
+      contributionsEnabled = Boolean(c.contributionsEnabled);
+      $("contribRow").hidden = !contributionsEnabled;
+    })
+    .catch(() => {});
+  fetch("models/hybrid.json")
+    .then((r) => r.json())
+    .then((h) => {
+      if (h.threshold > 0 && h.threshold < 1) hybridThreshold = h.threshold;
     })
     .catch(() => {});
 }

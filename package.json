@@ -10,7 +10,8 @@
     "fetch-model": "node scripts/fetch-model.mjs",
     "train": "node ml/train.mjs",
     "fetch-dataset": "node ml/fetch-commons.mjs",
-    "coverage": "node ml/coverage.mjs"
+    "coverage": "node ml/coverage.mjs",
+    "simulate": "node ml/simulate.mjs"
   },
   "repository": {
     "type": "git",

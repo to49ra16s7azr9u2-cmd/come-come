@@ -16,5 +16,8 @@ services:
         sync: false
       - key: DAILY_ANALYSIS_LIMIT
         value: "1500"
+      # 利用者の写真を受け付けるときは、有料プランで永続ディスクをつなぎ、そのマウント先を CONTRIB_DIR に指定する
+      # - key: CONTRIB_DIR
+      #   value: /var/data/contrib
       - key: NODE_VERSION
         value: "22"

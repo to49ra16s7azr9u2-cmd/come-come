@@ -224,3 +224,10 @@ dialog { width: min(480px, calc(100% - 32px)); max-height: calc(100% - 32px); ov
   .history li { grid-template-columns: 4em 1fr 5em; }
   .h-score { display: none; }
 }
+
+/* ---- 写真の提供 ---- */
+.contrib-row { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.check { display: flex !important; flex-direction: row; align-items: center; gap: 8px; }
+.check input { width: auto; }
+.consent-list { margin: 0 0 8px; padding-left: 1.2em; display: grid; gap: 4px; }
+a { color: var(--accent); }

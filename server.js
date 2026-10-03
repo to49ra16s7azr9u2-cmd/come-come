@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { contributionsDir, saveContribution, deleteContributions, ContributionError } from "./contrib.mjs";
+import { DISHES } from "./public/dishes.js";
 import { SYSTEM_PROMPT, buildUserText, normalizeAnalysis } from "./public/analysis.js";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -19,6 +21,20 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const ACCESS_CODE = process.env.APP_ACCESS_CODE || "";
 const PER_MINUTE = Number(process.env.RATE_LIMIT_PER_MINUTE) || 20;
 const DAILY_LIMIT = Number(process.env.DAILY_ANALYSIS_LIMIT) || 1500;
+// 利用者が同意して送る料理の写真(CONTRIB_DIR を設定したときだけ有効)
+const CONTRIB_DIR = contributionsDir();
+const CONTRIB_PER_HOUR = Number(process.env.CONTRIB_PER_HOUR) || 60;
+const DISH_KEY_SET = new Set(Object.keys(DISHES));
+const contribHits = new Map();
+function checkContribLimit(req) {
+  const ip = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
+  const now = Date.now();
+  const recent = (contribHits.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+  if (recent.length >= CONTRIB_PER_HOUR) throw new HttpError(429, "rate_limited", "回数が多すぎます");
+  recent.push(now);
+  contribHits.set(ip, recent);
+  if (contribHits.size > 10_000) contribHits.clear();
+}
 
 const client = new Anthropic();
 
@@ -221,7 +237,21 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && req.url === "/api/config") {
-      sendJson(res, 200, { accessCodeRequired: Boolean(ACCESS_CODE), cloudAvailable: Boolean(process.env.ANTHROPIC_API_KEY) });
+      sendJson(res, 200, { accessCodeRequired: Boolean(ACCESS_CODE), cloudAvailable: Boolean(process.env.ANTHROPIC_API_KEY), contributionsEnabled: Boolean(CONTRIB_DIR) });
+      return;
+    }
+    if (req.method === "POST" && (req.url === "/api/contribute" || req.url === "/api/contribute/delete")) {
+      if (!CONTRIB_DIR) throw new HttpError(404, "contrib_disabled", "写真の受け付けは無効です");
+      checkAccessCode(req);
+      checkContribLimit(req);
+      const body = await readJson(req);
+      try {
+        if (req.url === "/api/contribute") sendJson(res, 200, { ok: true, file: (await saveContribution(CONTRIB_DIR, body, DISH_KEY_SET)).file });
+        else sendJson(res, 200, { ok: true, deleted: await deleteContributions(CONTRIB_DIR, body.contributor) });
+      } catch (err) {
+        if (err instanceof ContributionError) throw new HttpError(400, err.code, err.message);
+        throw err;
+      }
       return;
     }
     if (req.method === "POST" && req.url === "/api/analyze") {

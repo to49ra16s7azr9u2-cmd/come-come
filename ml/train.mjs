@@ -11,128 +11,19 @@
 // 目標の指標は「上位3位以内」(アプリで候補を3つ出して1タップで選べるため)。
 //
 // 最後に全写真で学習し、スマホで使う分類ヘッドを public/models/dish-head.json に書き出す。
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
-import { Worker } from "node:worker_threads";
-import { AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, CLIPTextModelWithProjection, RawImage } from "@huggingface/transformers";
-import { DISHES, DISH_KEYS, NON_FOOD_PROMPTS, dishPrompts } from "../public/dishes.js";
+import { runLinear, closePool } from "./pool.mjs";
+import { DISHES, DISH_KEYS } from "../public/dishes.js";
+import { MODEL, DTYPE, ROOT, SOURCES, DUP_THRESHOLD, norm, dot, mean, loadDataset } from "./dataset.mjs";
 import { FOOD_DB } from "../public/foods.js";
 
-const MODEL = process.env.CLIP_MODEL || "Xenova/clip-vit-base-patch16";
-const DTYPE = process.env.CLIP_DTYPE || "q8";
-const ROOT = path.dirname(new URL(import.meta.url).pathname);
-// 写真の出典ごとのフォルダと、目視確認の結果。確認結果のファイルが無い出典は使わない(確認していない写真で学習しない)
-const SOURCES = [
-  { name: "Wikimedia Commons", dir: path.join(ROOT, "data"), review: path.join(ROOT, "review.json") },
-  { name: "Openverse (Flickr ほか)", dir: path.join(ROOT, "data-openverse"), review: path.join(ROOT, "review-openverse.json") },
-];
-const DUP_THRESHOLD = 0.95; // 画像ベクトルがこれ以上近い写真は同じ写真とみなす
-const CACHE = path.join(ROOT, "cache");
 const MIN_EVAL = 8; // これより写真が少ない料理は精度を報告しない
 const OUTER = 5;
 const INNER = 3;
-
-
 // 料理1皿の標準カロリー(材料表 × 成分表)
 const dishKcal = DISH_KEYS.map((k) => DISHES[k].recipe.reduce((s, r) => s + (FOOD_DB[r.db_key].per100g.energy_kcal * r.grams) / 100, 0));
-
-// ---- 目視確認済みの写真の一覧 ----
-async function listDir(dir, key, review) {
-  if (!existsSync(dir)) return [];
-  const files = (await readdir(dir)).filter((f) => f.endsWith(".jpg")).sort();
-  const idx = (f) => Number.parseInt(f, 10);
-  const keep = review.include_only?.[key]
-    ? files.filter((f) => review.include_only[key].includes(idx(f)))
-    : files.filter((f) => !(review.exclude?.[key] ?? []).includes(idx(f)));
-  return keep.map((f) => ({ key, file: path.join(dir, f) }));
-}
-
-async function listImages() {
-  const items = [];
-  for (const src of SOURCES) {
-    if (!existsSync(src.review)) {
-      console.error(`skip ${src.name}: 目視確認の結果(${path.basename(src.review)})がありません`);
-      continue;
-    }
-    const review = JSON.parse(await readFile(src.review, "utf8"));
-    for (const key of DISH_KEYS) for (const it of await listDir(path.join(src.dir, key), key, review)) items.push({ ...it, source: src.name });
-  }
-  return items;
-}
-
-/**
- * ほぼ同じ写真(別サイトの同じ写真、連写、トリミング違いなど)を除く。学習用と評価用に同じ写真が入ると精度が高く出てしまうため。
- * 同じ写真が別の料理として登録されていた場合は、どちらが正しいか決められないので両方とも除く。
- */
-function dedupe(items, X) {
-  const keep = [];
-  const removed = [];
-  const conflicts = new Set();
-  for (let i = 0; i < X.length; i++) {
-    const dup = keep.find((j) => dot(X[i], X[j]) >= DUP_THRESHOLD);
-    if (dup === undefined) keep.push(i);
-    else {
-      removed.push([items[i].file, items[dup].file]);
-      if (items[i].key !== items[dup].key) conflicts.add(dup);
-    }
-  }
-  return { keep: keep.filter((i) => !conflicts.has(i)), removed, conflicts: conflicts.size };
-}
-
-// ---- ベクトル計算 ----
-const norm = (v) => {
-  let s = 0;
-  for (const x of v) s += x * x;
-  s = Math.sqrt(s) || 1;
-  return v.map((x) => x / s);
-};
-const dot = (a, b) => {
-  let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
-  return s;
-};
-const mean = (vs) => vs[0].map((_, i) => vs.reduce((s, v) => s + v[i], 0) / vs.length);
-
-/** 左右反転した画像(学習用の水増し) */
-function mirror(image) {
-  const { width, height, channels, data } = image;
-  const out = new data.constructor(data.length);
-  for (let yy = 0; yy < height; yy++)
-    for (let xx = 0; xx < width; xx++)
-      for (let c = 0; c < channels; c++) out[(yy * width + xx) * channels + c] = data[(yy * width + (width - 1 - xx)) * channels + c];
-  return new RawImage(out, width, height, channels);
-}
-
-async function embedImages(items, { flip = false } = {}) {
-  const cacheFile = path.join(CACHE, `img-${MODEL.replace("/", "_")}-${DTYPE}${flip ? "-flip" : ""}.json`);
-  const cache = existsSync(cacheFile) ? JSON.parse(await readFile(cacheFile, "utf8")) : {};
-  const todo = items.filter((it) => !cache[it.file]);
-  if (todo.length) {
-    const processor = await AutoProcessor.from_pretrained(MODEL);
-    const vision = await CLIPVisionModelWithProjection.from_pretrained(MODEL, { dtype: DTYPE });
-    let n = 0;
-    for (const it of todo) {
-      const raw = await RawImage.read(it.file);
-      const image = flip ? mirror(raw.rgb()) : raw;
-      const { image_embeds } = await vision(await processor(image));
-      cache[it.file] = Array.from(image_embeds.data);
-      if (++n % 100 === 0) console.error(`  embedded ${n}/${todo.length}`);
-    }
-    await mkdir(CACHE, { recursive: true });
-    await writeFile(cacheFile, JSON.stringify(cache));
-  }
-  return items.map((it) => norm(cache[it.file]));
-}
-
-async function embedTexts(texts) {
-  const tokenizer = await AutoTokenizer.from_pretrained(MODEL);
-  const textModel = await CLIPTextModelWithProjection.from_pretrained(MODEL, { dtype: DTYPE });
-  const { text_embeds } = await textModel(tokenizer(texts, { padding: true, truncation: true }));
-  const dim = text_embeds.dims[1];
-  return texts.map((_, i) => norm(Array.from(text_embeds.data.slice(i * dim, (i + 1) * dim))));
-}
 
 // ---- 方式 ----
 // どの方式も fit(学習用ベクトル, 学習用ラベル, 設定) → { W: 料理数×次元, b: 料理数 } を返し、
@@ -154,40 +45,6 @@ function protoBlend(textProtos) {
     }),
     b: new Array(C).fill(0),
   });
-}
-
-// 線形分類器の学習は重いので、CPU のコア数だけ並列に動かす(ml/linear.mjs、ml/linear-worker.mjs)
-const POOL_SIZE = Math.max(1, Math.min(os.availableParallelism?.() ?? os.cpus().length, 8));
-const pool = [];
-const queue = [];
-let jobSeq = 0;
-function runLinear(job) {
-  return new Promise((resolve, reject) => {
-    queue.push({ id: ++jobSeq, job, resolve, reject });
-    pump();
-  });
-}
-function pump() {
-  while (queue.length) {
-    let w = pool.find((x) => !x.busy);
-    if (!w && pool.length < POOL_SIZE) {
-      w = { worker: new Worker(new URL("./linear-worker.mjs", import.meta.url)), busy: false };
-      w.worker.on("message", ({ id, W, b }) => {
-        const task = w.task;
-        w.busy = false;
-        w.task = null;
-        if (task?.id === id) task.resolve({ W, b });
-        pump();
-      });
-      w.worker.on("error", (err) => w.task?.reject(err));
-      pool.push(w);
-    }
-    if (!w) return;
-    const task = queue.shift();
-    w.busy = true;
-    w.task = task;
-    w.worker.postMessage({ id: task.id, job: task.job }, [task.job.X.buffer, task.job.y.buffer, task.job.W0.buffer]);
-  }
 }
 
 function linear(textProtos, opts = {}) {
@@ -286,24 +143,8 @@ async function nestedCV(fit, grid, X, y, evalClasses, augment = null) {
 
 // ---- 実行 ----
 const t0 = Date.now();
-const allItems = await listImages();
-const allX = await embedImages(allItems);
-const { keep, removed, conflicts } = dedupe(allItems, allX);
-const items = keep.map((i) => allItems[i]);
-const X = keep.map((i) => allX[i]);
-const Xflip = await embedImages(items, { flip: true });
-const y = items.map((it) => DISH_KEYS.indexOf(it.key));
+const { items, X, Xflip, y, textProtos, nonFood, removed, conflicts } = await loadDataset();
 console.error(`images: ${items.length} (removed ${removed.length} near-duplicates, ${conflicts} with conflicting labels), model: ${MODEL} (${DTYPE})`);
-
-const promptSets = DISH_KEYS.map(dishPrompts);
-const flat = await embedTexts(promptSets.flat());
-const textProtos = [];
-let o = 0;
-for (const ps of promptSets) {
-  textProtos.push(norm(mean(flat.slice(o, o + ps.length))));
-  o += ps.length;
-}
-const nonFood = await embedTexts(NON_FOOD_PROMPTS);
 
 const counts = {};
 y.forEach((c) => (counts[c] = (counts[c] ?? 0) + 1));
@@ -393,5 +234,5 @@ await writeFile(
     eval: { top1: best.top1, top3: best.top3, top5: best.top5, n: best.n },
   }),
 );
-for (const w of pool) w.worker.terminate();
+closePool();
 console.error(`wrote public/models/dish-head.json (${best.name}, param ${finalParam}) in ${((Date.now() - t0) / 1000).toFixed(0)}s`);

@@ -76,11 +76,12 @@ export class DishVote {
     if (!key || probs.length < this.minVotes) return null;
     return { key, prob: probs.reduce((a, b) => a + b, 0) / probs.length };
   }
-  /** 直近のフレームで確率の平均が高い料理を k 個(料理ではないものは除く) */
-  candidates(k = 3) {
+  /** 直近のフレームで確率の平均が高い料理を k 個(料理ではないものは除く)。州の料理があれば優先する */
+  candidates(k = 3, stateDishes = []) {
     const sum = {};
     for (const list of this.history) for (const { key, prob } of list) if (key) sum[key] = (sum[key] ?? 0) + prob / this.history.length;
-    return Object.entries(sum).sort((a, b) => b[1] - a[1]).slice(0, k).map(([key, prob]) => ({ key, prob }));
+    const sorted = Object.entries(sum).sort((a, b) => b[1] - a[1]).map(([key, prob]) => ({ key, prob }));
+    return preferCandidates(sorted, k, stateDishes);
   }
 }
 
@@ -94,4 +95,25 @@ export function applyStatePrior(ranked, stateDishes = [], boost = 1.5) {
   const w = ranked.map((r) => ({ ...r, prob: r.prob * (r.key && set.has(r.key) ? boost : 1) }));
   const total = w.reduce((s, r) => s + r.prob, 0) || 1;
   return w.map((r) => ({ ...r, prob: r.prob / total })).sort((a, b) => b.prob - a.prob);
+}
+
+/**
+ * 候補の上位 k 個を選ぶ。上位 k 個に利用者の州の料理がなく、すぐ下(k+2位まで)にあれば、k 位と入れ替える。
+ * sorted: 確率の高い順の [{ key, prob }](料理ではないもの key: null は除いてから渡す)
+ */
+export function preferCandidates(sorted, k = 3, stateDishes = []) {
+  const top = sorted.slice(0, k);
+  if (!stateDishes.length) return top;
+  const set = new Set(stateDishes);
+  if (top.some((c) => set.has(c.key))) return top;
+  const local = sorted.slice(k, k + 2).find((c) => set.has(c.key));
+  return local ? [...top.slice(0, k - 1), local] : top;
+}
+
+/**
+ * スマホ内AIだけで決めてよいか。1位の確率がしきい値より低いときはクラウド(Claude)に聞く。
+ * しきい値は ml/simulate.mjs で、スマホだけで決めた分の上位3位以内が 95% 以上になるよう選んだ値。
+ */
+export function needsCloud(top, threshold) {
+  return !top?.key || top.prob < threshold;
 }

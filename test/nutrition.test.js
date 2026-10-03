@@ -292,3 +292,49 @@ test("線形分類器の学習は、分けられるデータを正しく分け�
     assert.equal(s0 > s1 ? 0 : 1, y[i], `point ${i}`);
   }
 });
+
+test("候補の上位3つに州の料理がなければ、すぐ下の州の料理と入れ替える", async () => {
+  const { preferCandidates, needsCloud, DishVote } = await import("../public/classifier.js");
+  const sorted = ["a", "b", "c", "d", "e", "f"].map((key, i) => ({ key, prob: 0.4 - i * 0.05 }));
+  assert.deepEqual(preferCandidates(sorted, 3, ["e"]).map((c) => c.key), ["a", "b", "e"]);
+  assert.deepEqual(preferCandidates(sorted, 3, ["b"]).map((c) => c.key), ["a", "b", "c"], "すでに入っていれば変えない");
+  assert.deepEqual(preferCandidates(sorted, 3, ["f"]).map((c) => c.key), ["a", "b", "c"], "6位は遠すぎるので入れない");
+  assert.deepEqual(preferCandidates(sorted, 3).map((c) => c.key), ["a", "b", "c"]);
+  // 多数決の候補にも同じ規則が使われる
+  const v = new DishVote({ window: 1 });
+  v.push(sorted);
+  assert.deepEqual(v.candidates(3, ["d"]).map((c) => c.key), ["a", "b", "d"]);
+  // クラウドに聞くかどうか
+  assert.equal(needsCloud({ key: "a", prob: 0.5 }, 0.6), true);
+  assert.equal(needsCloud({ key: "a", prob: 0.7 }, 0.6), false);
+  assert.equal(needsCloud(undefined, 0.6), true);
+});
+
+test("同意して送られた写真の保存と、端末ごとの削除", async () => {
+  const { saveContribution, deleteContributions } = await import("../contrib.mjs");
+  const { mkdtemp, readFile, readdir } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const dir = await mkdtemp(path.join(tmpdir(), "contrib-"));
+  const jpeg = "data:image/jpeg;base64," + Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString("base64");
+  const me = "a".repeat(32), other = "b".repeat(32);
+  const valid = new Set(["pozole", "tamales"]);
+  await saveContribution(dir, { image: jpeg, dish_key: "pozole", source: "user_corrected", state: "JAL", contributor: me }, valid, 1);
+  await saveContribution(dir, { image: jpeg, dish_key: "tamales", source: "cloud", contributor: other }, valid, 2);
+  assert.equal((await readdir(path.join(dir, "pozole"))).length, 1);
+  // 不正な入力は受け付けない
+  for (const bad of [
+    { image: "data:image/png;base64,AAAA", dish_key: "pozole", source: "cloud", contributor: me },
+    { image: jpeg, dish_key: "../etc", source: "cloud", contributor: me },
+    { image: jpeg, dish_key: "pozole", source: "guess", contributor: me },
+    { image: jpeg, dish_key: "pozole", source: "cloud", contributor: "x" },
+    { image: "data:image/jpeg;base64," + Buffer.from("not a jpeg").toString("base64"), dish_key: "pozole", source: "cloud", contributor: me },
+  ]) await assert.rejects(saveContribution(dir, bad, valid), (e) => e.code === "bad_request");
+  // 自分の写真だけが消える
+  assert.equal(await deleteContributions(dir, me), 1);
+  assert.equal((await readdir(path.join(dir, "pozole"))).length, 0);
+  assert.equal((await readdir(path.join(dir, "tamales"))).length, 1);
+  const log = (await readFile(path.join(dir, "contributions.jsonl"), "utf8")).trim().split("\n");
+  assert.equal(log.length, 1);
+  assert.equal(JSON.parse(log[0]).contributor, other);
+});
